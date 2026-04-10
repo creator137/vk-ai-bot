@@ -10,6 +10,7 @@ from app.application.vk_events import build_vk_event_application_handler
 from app.application.request_outcomes import RequestOutcome
 from app.db.session import get_session_factory
 from app.vk_transport.outcome_consumer import OutcomeConsumption, consume_request_outcome
+from app.vk_transport.outward_reactions import plan_vk_outward_reaction
 from app.vk_transport.schemas import NormalizedVkEvent, VkCallbackPayload
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class ApplicationVkEventHandoff:
             outcome = _dispatch_to_application(session, event)
         consumption = consume_request_outcome(outcome)
         _handle_consumed_outcome(event, outcome, consumption)
+        _plan_outward_reaction(event, consumption)
         return outcome
 
 
@@ -75,6 +77,33 @@ def _handle_consumed_outcome(
         event.event_id,
         outcome.reason,
         outcome.user_id,
+    )
+
+
+def _plan_outward_reaction(
+    event: NormalizedVkEvent,
+    consumption: OutcomeConsumption,
+) -> None:
+    reaction = plan_vk_outward_reaction(consumption)
+    if reaction.action == "none":
+        logger.info(
+            "VK outward reaction not planned: type=%s event_id=%s branch=%s",
+            event.event_type,
+            event.event_id,
+            consumption.state,
+        )
+        return
+
+    logger.info(
+        (
+            "VK outward reaction planned: type=%s event_id=%s branch=%s "
+            "action=%s text=%s"
+        ),
+        event.event_type,
+        event.event_id,
+        consumption.state,
+        reaction.action,
+        reaction.text,
     )
 
 
