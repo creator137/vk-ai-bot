@@ -46,16 +46,16 @@ class VkAccessBoundaryTests(unittest.TestCase):
         with self.session_factory() as session:
             handler = build_vk_event_application_handler(session)
 
-            decision = handler.handle(event)
+            outcome = handler.handle(event)
             users = session.execute(select(User)).scalars().all()
 
-        self.assertIsNotNone(decision)
-        self.assertFalse(decision.allowed)
-        self.assertEqual(decision.reason, "grant_missing")
+        self.assertEqual(outcome.status, "denied")
+        self.assertEqual(outcome.reason, "access_denied")
+        self.assertEqual(outcome.user_id, users[0].id)
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0].vk_user_id, 123456)
 
-    def test_vk_flow_returns_allow_when_user_has_grant(self) -> None:
+    def test_vk_flow_returns_accepted_when_user_has_grant(self) -> None:
         event = NormalizedVkEvent(
             event_type="message_new",
             group_id=1,
@@ -72,13 +72,13 @@ class VkAccessBoundaryTests(unittest.TestCase):
             session.commit()
             handler = build_vk_event_application_handler(session)
 
-            decision = handler.handle(event)
+            outcome = handler.handle(event)
 
-        self.assertIsNotNone(decision)
-        self.assertTrue(decision.allowed)
-        self.assertEqual(decision.reason, "grant_present")
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual(outcome.reason, "access_allowed")
+        self.assertEqual(outcome.user_id, user.id)
 
-    def test_vk_flow_noops_when_actor_id_is_missing(self) -> None:
+    def test_vk_flow_returns_skipped_when_actor_id_is_missing(self) -> None:
         event = NormalizedVkEvent(
             event_type="group_join",
             group_id=1,
@@ -92,8 +92,10 @@ class VkAccessBoundaryTests(unittest.TestCase):
         with self.session_factory() as session:
             handler = build_vk_event_application_handler(session)
 
-            decision = handler.handle(event)
+            outcome = handler.handle(event)
             users = session.execute(select(User)).scalars().all()
 
-        self.assertIsNone(decision)
+        self.assertEqual(outcome.status, "skipped")
+        self.assertEqual(outcome.reason, "missing_actor_id")
+        self.assertIsNone(outcome.user_id)
         self.assertEqual(users, [])

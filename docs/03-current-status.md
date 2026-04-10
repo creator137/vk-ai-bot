@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, and minimal access decision boundary implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, and minimal request outcome slice implemented.
 
 ## Current phase
 
-First access-aware application slice ready. Repository prepared for the next request outcome slice.
+First explicit request-outcome slice ready. Repository prepared for the next outcome consumer slice.
 
 ## Completed
 
@@ -55,6 +55,13 @@ First access-aware application slice ready. Repository prepared for the next req
 - Access deny-by-default behavior added
 - VK application slice now returns explicit allow/deny access decisions
 - Access boundary tests added
+- Typed RequestOutcome model added
+- VK application slice now returns explicit request outcomes:
+  - skipped
+  - denied
+  - accepted
+- VK transport now logs application request outcomes without changing callback contract
+- Request outcome tests added
 
 ## Accepted technical direction
 
@@ -78,24 +85,24 @@ First access-aware application slice ready. Repository prepared for the next req
 
 ## Next recommended step
 
-Implement the first minimal request outcome slice on top of the access decision boundary:
+Implement the first minimal outcome consumer slice on top of request outcomes:
 
-1. keep access results explicit at the application boundary
-2. add minimal outcome handling for allowed vs denied requests
+1. keep request outcomes explicit and typed
+2. add minimal handling for denied vs accepted outcomes
 3. do not add payment logic yet
 4. do not add AI execution yet
 5. do not add conversations persistence yet
 
 ## Recommended next branch
 
-`feat/request-outcome-bootstrap`
+`feat/outcome-consumer-bootstrap`
 
 ## Recommended next task for AI
 
-Implement only the minimal request outcome slice:
+Implement only the minimal outcome consumer slice:
 
-- application result model for access-aware VK requests
-- explicit handling for allowed vs denied outcomes
+- explicit handling for denied vs accepted outcomes
+- no fake AI response generation
 - no billing logic
 - no AI provider calls
 - no subscription/payment orchestration yet
@@ -113,6 +120,8 @@ Then update current status after the slice is complete.
 - Users module currently covers only minimal identity persistence and lookup/create
 - Access module currently uses persisted access grants and deny-by-default decisions
 - Access grant issuance flow is not implemented yet
+- Application layer currently ends with explicit skipped/denied/accepted request outcomes
+- `accepted` currently means readiness for the next processing stage only
 - VK events without actor id are safely ignored by the application handoff
 - Do not mix VK transport with billing or AI logic
 - Do not start payment flows yet
