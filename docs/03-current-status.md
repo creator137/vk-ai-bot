@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap implemented.
+Foundation bootstrap and minimal VK transport bootstrap implemented.
 
 ## Current phase
 
-Foundation ready. Repository prepared for the first functional slice.
+Transport boundary ready. Repository prepared for the first application slice.
 
 ## Completed
 
@@ -33,6 +33,11 @@ Foundation ready. Repository prepared for the first functional slice.
 - Minimal healthcheck endpoint added
 - Smoke tests added
 - Alembic scaffold added
+- Minimal VK callback endpoint added
+- VK callback payload validation added
+- VK event normalization into internal transport format added
+- Thin handoff boundary to future service layer added
+- VK transport tests added
 
 ## Accepted technical direction
 
@@ -56,28 +61,28 @@ Foundation ready. Repository prepared for the first functional slice.
 
 ## Next recommended step
 
-Implement the first inbound transport slice for VK without entering billing or AI execution:
+Implement the minimal users bootstrap without entering billing, access control, or AI execution:
 
-1. add validated VK webhook entrypoint
-2. normalize incoming VK payload
-3. isolate VK transport from business logic
-4. prepare handoff to future service layer
-5. keep response flow minimal and explicit
+1. add internal user model linked to VK user id
+2. add migration for user storage
+3. add repository for user lookup/create
+4. add thin service for find-or-create user
+5. keep transport unaware of user persistence details
 
 ## Recommended next branch
 
-`feat/vk-transport-bootstrap`
+`feat/users-bootstrap`
 
 ## Recommended next task for AI
 
-Implement only the minimal VK transport boundary:
+Implement only the minimal users slice:
 
-- request schema validation
-- payload normalization
-- thin transport handler
+- user entity and migration
+- repository and service layer
+- find-or-create by VK user id
 - no billing logic
 - no AI provider calls
-- no user/business workflows yet
+- no subscription/access logic yet
 
 Then update current status after the slice is complete.
 
@@ -86,6 +91,8 @@ Then update current status after the slice is complete.
 - Foundation is now in place
 - Business modules are not implemented yet
 - Current local Docker stack does not include Nginx; this is intentionally deferred
+- VK transport currently validates payload shape, optional callback secret, and normalizes events
+- VK transport does not yet execute business workflows
 - Do not mix VK transport with billing or AI logic
 - Do not start payment flows yet
 - Do not start full AI integration yet
