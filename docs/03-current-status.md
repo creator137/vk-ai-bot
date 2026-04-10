@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, and VK-to-users handoff implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, and minimal access decision boundary implemented.
 
 ## Current phase
 
-First user-aware application slice ready. Repository prepared for the next business slice.
+First access-aware application slice ready. Repository prepared for the next request outcome slice.
 
 ## Completed
 
@@ -48,6 +48,13 @@ First user-aware application slice ready. Repository prepared for the next busin
 - VK handoff now resolves or creates internal user by `vk_user_id`
 - Safe no-op flow added for VK events without actor id
 - VK-to-users handoff tests added
+- Minimal access module added
+- Access grant model added
+- Access grant migration added
+- Access decision service added
+- Access deny-by-default behavior added
+- VK application slice now returns explicit allow/deny access decisions
+- Access boundary tests added
 
 ## Accepted technical direction
 
@@ -71,27 +78,28 @@ First user-aware application slice ready. Repository prepared for the next busin
 
 ## Next recommended step
 
-Implement the first minimal access decision boundary without entering billing or AI execution:
+Implement the first minimal request outcome slice on top of the access decision boundary:
 
-1. define a small access-check application boundary
-2. keep transport and users separate from access rules
-3. return explicit allow/deny semantics for the next slice
-4. do not add payment logic yet
-5. do not add AI execution yet
+1. keep access results explicit at the application boundary
+2. add minimal outcome handling for allowed vs denied requests
+3. do not add payment logic yet
+4. do not add AI execution yet
+5. do not add conversations persistence yet
 
 ## Recommended next branch
 
-`feat/access-bootstrap`
+`feat/request-outcome-bootstrap`
 
 ## Recommended next task for AI
 
-Implement only the minimal access bootstrap slice:
+Implement only the minimal request outcome slice:
 
-- access-check service boundary
-- explicit allow/deny result model
+- application result model for access-aware VK requests
+- explicit handling for allowed vs denied outcomes
 - no billing logic
 - no AI provider calls
 - no subscription/payment orchestration yet
+- no conversations persistence yet
 
 Then update current status after the slice is complete.
 
@@ -103,6 +111,8 @@ Then update current status after the slice is complete.
 - VK transport currently validates payload shape, optional callback secret, and normalizes events
 - VK transport now hands normalized events into a minimal user-aware application slice
 - Users module currently covers only minimal identity persistence and lookup/create
+- Access module currently uses persisted access grants and deny-by-default decisions
+- Access grant issuance flow is not implemented yet
 - VK events without actor id are safely ignored by the application handoff
 - Do not mix VK transport with billing or AI logic
 - Do not start payment flows yet
