@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.application.vk_events import build_vk_event_application_handler
+from app.application.request_outcomes import RequestOutcome
 from app.db.session import get_session_factory
 from app.vk_transport.schemas import NormalizedVkEvent, VkCallbackPayload
 
@@ -14,12 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 class VkEventHandoff(Protocol):
-    def handle(self, event: NormalizedVkEvent) -> None:
+    def handle(self, event: NormalizedVkEvent) -> RequestOutcome:
         """Accept a normalized VK event for future service-layer processing."""
 
 
 class ApplicationVkEventHandoff:
-    def handle(self, event: NormalizedVkEvent) -> None:
+    def handle(self, event: NormalizedVkEvent) -> RequestOutcome:
         logger.info(
             "VK event accepted: type=%s event_id=%s actor_id=%s peer_id=%s",
             event.event_type,
@@ -29,12 +30,21 @@ class ApplicationVkEventHandoff:
         )
         session_factory = get_session_factory()
         with session_factory() as session:
-            _dispatch_to_application(session, event)
+            outcome = _dispatch_to_application(session, event)
+        logger.info(
+            "VK event outcome: type=%s event_id=%s status=%s reason=%s user_id=%s",
+            event.event_type,
+            event.event_id,
+            outcome.status,
+            outcome.reason,
+            outcome.user_id,
+        )
+        return outcome
 
 
-def _dispatch_to_application(session: Session, event: NormalizedVkEvent) -> None:
+def _dispatch_to_application(session: Session, event: NormalizedVkEvent) -> RequestOutcome:
     handler = build_vk_event_application_handler(session)
-    handler.handle(event)
+    return handler.handle(event)
 
 
 _handoff = ApplicationVkEventHandoff()
