@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, and minimal request outcome slice implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, and minimal outcome consumer slice implemented.
 
 ## Current phase
 
-First explicit request-outcome slice ready. Repository prepared for the next outcome consumer slice.
+First explicit outcome consumer slice ready. Repository prepared for the next outcome-specific handling slice.
 
 ## Completed
 
@@ -62,6 +62,13 @@ First explicit request-outcome slice ready. Repository prepared for the next out
   - accepted
 - VK transport now logs application request outcomes without changing callback contract
 - Request outcome tests added
+- Minimal outcome consumer added
+- Outcome consumer now maps request outcomes into explicit flow completion states:
+  - ignored
+  - halted
+  - ready_for_next_stage
+- VK transport now consumes request outcomes for explicit flow completion and branch-specific logging
+- Outcome consumer tests added
 
 ## Accepted technical direction
 
@@ -85,23 +92,23 @@ First explicit request-outcome slice ready. Repository prepared for the next out
 
 ## Next recommended step
 
-Implement the first minimal outcome consumer slice on top of request outcomes:
+Implement the first minimal outcome-specific handling slice on top of consumed outcomes:
 
-1. keep request outcomes explicit and typed
-2. add minimal handling for denied vs accepted outcomes
+1. keep consumed outcome states explicit
+2. add minimal handling for denied vs accepted branches
 3. do not add payment logic yet
 4. do not add AI execution yet
 5. do not add conversations persistence yet
 
 ## Recommended next branch
 
-`feat/outcome-consumer-bootstrap`
+`feat/denied-outcome-handling`
 
 ## Recommended next task for AI
 
-Implement only the minimal outcome consumer slice:
+Implement only the minimal denied/accepted outcome handling slice:
 
-- explicit handling for denied vs accepted outcomes
+- explicit handling for consumed denied vs accepted branches
 - no fake AI response generation
 - no billing logic
 - no AI provider calls
@@ -122,6 +129,7 @@ Then update current status after the slice is complete.
 - Access grant issuance flow is not implemented yet
 - Application layer currently ends with explicit skipped/denied/accepted request outcomes
 - `accepted` currently means readiness for the next processing stage only
+- Outcome consumer currently maps request outcomes to ignored/halted/ready_for_next_stage only
 - VK events without actor id are safely ignored by the application handoff
 - Do not mix VK transport with billing or AI logic
 - Do not start payment flows yet
