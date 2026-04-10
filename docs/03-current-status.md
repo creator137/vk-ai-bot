@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, and minimal denied/accepted branch handling implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, and minimal outward reaction slice implemented.
 
 ## Current phase
 
-First explicit consumed-branch handling slice ready. Repository prepared for the next outward reaction slice.
+First explicit outward reaction slice ready. Repository prepared for the next outward delivery slice.
 
 ## Completed
 
@@ -75,6 +75,13 @@ First explicit consumed-branch handling slice ready. Repository prepared for the
   - halted
   - ready_for_next_stage
 - Consumed outcome handling tests added
+- Minimal VK outward reaction planning added
+- Outward reaction planning rules added:
+  - ignored -> no reaction
+  - halted -> static denied text
+  - ready_for_next_stage -> no reaction
+- VK transport now plans and logs outward reactions without real VK dispatch
+- Outward reaction tests added
 
 ## Accepted technical direction
 
@@ -98,23 +105,23 @@ First explicit consumed-branch handling slice ready. Repository prepared for the
 
 ## Next recommended step
 
-Implement the first minimal outward reaction slice on top of handled branches:
+Implement the first minimal outward delivery slice on top of planned reactions:
 
-1. keep handled branch completion explicit
-2. add minimal outward reaction boundary for denied vs accepted branches
+1. keep outward reactions explicit and minimal
+2. add narrow delivery boundary for planned denied reactions
 3. do not add payment logic yet
 4. do not add AI execution yet
 5. do not add conversations persistence yet
 
 ## Recommended next branch
 
-`feat/outward-reaction-bootstrap`
+`feat/outward-delivery-bootstrap`
 
 ## Recommended next task for AI
 
-Implement only the minimal outward reaction slice:
+Implement only the minimal outward delivery slice:
 
-- outward reaction boundary for handled denied vs accepted branches
+- delivery boundary for planned VK outward reactions
 - no fake AI response generation
 - no billing logic
 - no AI provider calls
@@ -137,6 +144,7 @@ Then update current status after the slice is complete.
 - `accepted` currently means readiness for the next processing stage only
 - Outcome consumer currently maps request outcomes to ignored/halted/ready_for_next_stage only
 - Current handled branches only log and explicitly finish the flow
+- Current outward reaction planning only plans a static denied text and does not dispatch it
 - VK events without actor id are safely ignored by the application handoff
 - Do not mix VK transport with billing or AI logic
 - Do not start payment flows yet
