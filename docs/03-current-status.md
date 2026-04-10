@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap and minimal VK transport bootstrap implemented.
+Foundation bootstrap, minimal VK transport bootstrap, and minimal users bootstrap implemented.
 
 ## Current phase
 
-Transport boundary ready. Repository prepared for the first application slice.
+User identity boundary ready. Repository prepared for the first user-aware application slice.
 
 ## Completed
 
@@ -38,6 +38,12 @@ Transport boundary ready. Repository prepared for the first application slice.
 - VK event normalization into internal transport format added
 - Thin handoff boundary to future service layer added
 - VK transport tests added
+- Minimal User model added
+- Internal user <-> `vk_user_id` mapping added
+- Users table migration added
+- Users repository added
+- Users find-or-create service added
+- Users bootstrap tests added
 
 ## Accepted technical direction
 
@@ -61,25 +67,25 @@ Transport boundary ready. Repository prepared for the first application slice.
 
 ## Next recommended step
 
-Implement the minimal users bootstrap without entering billing, access control, or AI execution:
+Integrate VK transport handoff with the users service without entering access control, billing, or AI execution:
 
-1. add internal user model linked to VK user id
-2. add migration for user storage
-3. add repository for user lookup/create
-4. add thin service for find-or-create user
-5. keep transport unaware of user persistence details
+1. add a minimal application handler for normalized VK events
+2. resolve or create internal user by `vk_user_id`
+3. keep VK transport thin and unaware of persistence details
+4. do not add access checks yet
+5. do not add AI execution yet
 
 ## Recommended next branch
 
-`feat/users-bootstrap`
+`feat/vk-user-handoff`
 
 ## Recommended next task for AI
 
-Implement only the minimal users slice:
+Implement only the minimal handoff between VK transport and the users module:
 
-- user entity and migration
-- repository and service layer
-- find-or-create by VK user id
+- normalized event application handler
+- user resolution via users service
+- no access control
 - no billing logic
 - no AI provider calls
 - no subscription/access logic yet
@@ -89,10 +95,11 @@ Then update current status after the slice is complete.
 ## Notes
 
 - Foundation is now in place
-- Business modules are not implemented yet
+- Business modules beyond users are not implemented yet
 - Current local Docker stack does not include Nginx; this is intentionally deferred
 - VK transport currently validates payload shape, optional callback secret, and normalizes events
 - VK transport does not yet execute business workflows
+- Users module currently covers only minimal identity persistence and lookup/create
 - Do not mix VK transport with billing or AI logic
 - Do not start payment flows yet
 - Do not start full AI integration yet
