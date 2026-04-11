@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-5-mini"
     internal_access_token: str | None = None
+    vk_outbound_token: str | None = None
+    vk_api_version: str = "5.199"
     vk_callback_secret: str | None = None
     vk_callback_confirmation_token: str | None = None
 
