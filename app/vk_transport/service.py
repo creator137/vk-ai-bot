@@ -4,15 +4,22 @@ import logging
 from typing import Any, Protocol
 
 from fastapi import HTTPException, status
+import httpx
 from sqlalchemy.orm import Session
 
 from app.application.accepted_dispatch import dispatch_accepted_vk_event
 from app.application.vk_events import build_vk_event_application_handler
 from app.application.request_outcomes import RequestOutcome
+from app.core.config import get_settings
 from app.db.session import get_session_factory
+from app.vk_transport.delivery import deliver_planned_vk_reaction
 from app.vk_transport.outcome_consumer import OutcomeConsumption, consume_request_outcome
-from app.vk_transport.outward_reactions import plan_vk_outward_reaction
+from app.vk_transport.outward_reactions import (
+    VkOutwardReactionPlan,
+    plan_vk_outward_reaction,
+)
 from app.vk_transport.schemas import NormalizedVkEvent, VkCallbackPayload
+from app.vk_transport.vk_api import VkMessagesApi, VkApiError
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +44,8 @@ class ApplicationVkEventHandoff:
         consumption = consume_request_outcome(outcome)
         _handle_consumed_outcome(event, outcome, consumption)
         _dispatch_accepted_event(event, consumption)
-        _plan_outward_reaction(event, consumption)
+        reaction = _plan_outward_reaction(event, consumption)
+        _deliver_outward_reaction(event, reaction)
         return outcome
 
 
@@ -85,7 +93,7 @@ def _handle_consumed_outcome(
 def _plan_outward_reaction(
     event: NormalizedVkEvent,
     consumption: OutcomeConsumption,
-) -> None:
+) -> VkOutwardReactionPlan:
     reaction = plan_vk_outward_reaction(consumption)
     if reaction.action == "none":
         logger.info(
@@ -94,7 +102,7 @@ def _plan_outward_reaction(
             event.event_id,
             consumption.state,
         )
-        return
+        return reaction
 
     logger.info(
         (
@@ -107,6 +115,7 @@ def _plan_outward_reaction(
         reaction.action,
         reaction.text,
     )
+    return reaction
 
 
 def _dispatch_accepted_event(
@@ -117,6 +126,41 @@ def _dispatch_accepted_event(
         return
 
     dispatch_accepted_vk_event(event)
+
+
+def _deliver_outward_reaction(
+    event: NormalizedVkEvent,
+    reaction: VkOutwardReactionPlan,
+) -> None:
+    if reaction.action == "none":
+        return
+
+    settings = get_settings()
+    if not settings.vk_outbound_token:
+        logger.warning(
+            "VK outward reaction delivery skipped: type=%s event_id=%s reason=missing_outbound_token",
+            event.event_type,
+            event.event_id,
+        )
+        return
+
+    messages_api = VkMessagesApi(
+        token=settings.vk_outbound_token,
+        api_version=settings.vk_api_version,
+    )
+    try:
+        deliver_planned_vk_reaction(
+            event,
+            reaction,
+            messages_api=messages_api,
+        )
+    except (VkApiError, HTTPException, httpx.HTTPError) as error:
+        logger.warning(
+            "VK outward reaction delivery failed: type=%s event_id=%s error=%s",
+            event.event_type,
+            event.event_id,
+            str(error),
+        )
 
 
 _handoff = ApplicationVkEventHandoff()

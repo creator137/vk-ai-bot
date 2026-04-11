@@ -9,6 +9,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://vk_ai:vk_ai@postgres:5432/vk_ai}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       INTERNAL_ACCESS_TOKEN: ${INTERNAL_ACCESS_TOKEN:-}
+      VK_OUTBOUND_TOKEN: ${VK_OUTBOUND_TOKEN:-}
+      VK_API_VERSION: ${VK_API_VERSION:-5.199}
       VK_CALLBACK_SECRET: ${VK_CALLBACK_SECRET:-}
       VK_CALLBACK_CONFIRMATION_TOKEN: ${VK_CALLBACK_CONFIRMATION_TOKEN:-}
     ports:
@@ -30,6 +32,8 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      VK_OUTBOUND_TOKEN: ${VK_OUTBOUND_TOKEN:-}
+      VK_API_VERSION: ${VK_API_VERSION:-5.199}
     depends_on:
       postgres:
         condition: service_healthy
