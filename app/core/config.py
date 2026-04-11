@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     database_url: str = "postgresql+psycopg://vk_ai:vk_ai@localhost:5432/vk_ai"
     redis_url: str = "redis://localhost:6379/0"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-5-mini"
     internal_access_token: str | None = None
     vk_callback_secret: str | None = None
     vk_callback_confirmation_token: str | None = None
