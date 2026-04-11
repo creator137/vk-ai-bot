@@ -8,6 +8,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://vk_ai:vk_ai@postgres:5432/vk_ai}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      INTERNAL_ACCESS_TOKEN: ${INTERNAL_ACCESS_TOKEN:-}
       VK_CALLBACK_SECRET: ${VK_CALLBACK_SECRET:-}
       VK_CALLBACK_CONFIRMATION_TOKEN: ${VK_CALLBACK_CONFIRMATION_TOKEN:-}
     ports:
