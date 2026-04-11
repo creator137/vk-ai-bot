@@ -44,7 +44,10 @@ class VkCallbackTests(unittest.TestCase):
 
         with patch(
             "app.api.routes.vk.get_settings",
-            return_value=Settings(),
+            return_value=Settings(
+                vk_callback_secret=None,
+                vk_callback_confirmation_token=None,
+            ),
         ):
             with TestClient(app) as client:
                 response = client.post("/webhooks/vk", json=payload)
@@ -65,7 +68,10 @@ class VkCallbackTests(unittest.TestCase):
     def test_vk_callback_rejects_invalid_payload(self) -> None:
         with patch(
             "app.api.routes.vk.get_settings",
-            return_value=Settings(),
+            return_value=Settings(
+                vk_callback_secret=None,
+                vk_callback_confirmation_token=None,
+            ),
         ):
             with TestClient(app) as client:
                 response = client.post("/webhooks/vk", json={"group_id": 100, "object": {}})
@@ -102,6 +108,27 @@ class VkCallbackTests(unittest.TestCase):
         with patch(
             "app.api.routes.vk.get_settings",
             return_value=Settings(vk_callback_confirmation_token="confirmation-code"),
+        ):
+            with TestClient(app) as client:
+                response = client.post("/webhooks/vk", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, "confirmation-code")
+        self.assertEqual(len(self.handoff.events), 0)
+
+    def test_vk_confirmation_ignores_callback_secret_requirement(self) -> None:
+        payload = {
+            "type": "confirmation",
+            "group_id": 100,
+            "object": {},
+        }
+
+        with patch(
+            "app.api.routes.vk.get_settings",
+            return_value=Settings(
+                vk_callback_secret="expected-secret",
+                vk_callback_confirmation_token="confirmation-code",
+            ),
         ):
             with TestClient(app) as client:
                 response = client.post("/webhooks/vk", json=payload)

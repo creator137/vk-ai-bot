@@ -21,11 +21,6 @@ def vk_callback(
     handoff: VkEventHandoff = Depends(get_vk_event_handoff),
 ) -> PlainTextResponse:
     settings = get_settings()
-    ensure_vk_callback_secret(
-        payload_secret=payload.secret,
-        expected_secret=settings.vk_callback_secret,
-    )
-
     if payload.type == "confirmation":
         if not settings.vk_callback_confirmation_token:
             raise HTTPException(
@@ -33,6 +28,11 @@ def vk_callback(
                 detail="VK confirmation token is not configured",
             )
         return PlainTextResponse(settings.vk_callback_confirmation_token)
+
+    ensure_vk_callback_secret(
+        payload_secret=payload.secret,
+        expected_secret=settings.vk_callback_secret,
+    )
 
     normalized_event = normalize_vk_event(payload)
     handoff.handle(normalized_event)
