@@ -6,6 +6,7 @@ from typing import Any, Protocol
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.application.accepted_dispatch import dispatch_accepted_vk_event
 from app.application.vk_events import build_vk_event_application_handler
 from app.application.request_outcomes import RequestOutcome
 from app.db.session import get_session_factory
@@ -35,6 +36,7 @@ class ApplicationVkEventHandoff:
             outcome = _dispatch_to_application(session, event)
         consumption = consume_request_outcome(outcome)
         _handle_consumed_outcome(event, outcome, consumption)
+        _dispatch_accepted_event(event, consumption)
         _plan_outward_reaction(event, consumption)
         return outcome
 
@@ -105,6 +107,16 @@ def _plan_outward_reaction(
         reaction.action,
         reaction.text,
     )
+
+
+def _dispatch_accepted_event(
+    event: NormalizedVkEvent,
+    consumption: OutcomeConsumption,
+) -> None:
+    if consumption.state != "ready_for_next_stage":
+        return
+
+    dispatch_accepted_vk_event(event)
 
 
 _handoff = ApplicationVkEventHandoff()
