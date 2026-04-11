@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, and minimal access grant issuance slice implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, and minimal AI bootstrap for accepted path implemented.
 
 ## Current phase
 
-Manual access grant issuance ready. Repository prepared for the next outward delivery slice.
+First real accepted text execution path ready. Repository prepared for the next request persistence/context slice.
 
 ## Completed
 
@@ -86,6 +86,11 @@ Manual access grant issuance ready. Repository prepared for the next outward del
 - Minimal idempotent access grant issuance added
 - Access grants can now be issued through `vk_user_id -> user -> grant`
 - Access grant issuance tests added
+- Minimal OpenAI text provider adapter added
+- Accepted `message_new` text requests now dispatch to a worker only for the accepted branch
+- Accepted non-text or non-message events now safe no-op without dispatch
+- Worker now calls the AI provider and delivers text replies back through the existing VK outward delivery path
+- Accepted AI bootstrap tests added
 
 ## Accepted technical direction
 
@@ -109,28 +114,28 @@ Manual access grant issuance ready. Repository prepared for the next outward del
 
 ## Next recommended step
 
-Implement the first minimal outward delivery slice on top of planned reactions:
+Implement the first minimal request persistence/context slice on top of the current accepted text path:
 
-1. keep outward reactions explicit and minimal
-2. add narrow delivery boundary for planned denied reactions
+1. keep denied and accepted delivery behavior unchanged
+2. persist a minimal request/response record for accepted text flows
 3. do not add payment logic yet
-4. do not add AI execution yet
-5. do not add conversations persistence yet
+4. do not add attachments yet
+5. do not add broad conversation memory yet
 
 ## Recommended next branch
 
-`feat/outward-delivery-bootstrap`
+`feat/request-persistence-bootstrap`
 
 ## Recommended next task for AI
 
-Implement only the minimal outward delivery slice:
+Implement only the minimal request persistence/context slice:
 
-- delivery boundary for planned VK outward reactions
-- no fake AI response generation
+- persist accepted text request/response pairs
+- no broad conversation system
 - no billing logic
-- no AI provider calls
+- no attachments yet
 - no subscription/payment orchestration yet
-- no conversations persistence yet
+- no usage accounting yet
 
 Then update current status after the slice is complete.
 
@@ -145,11 +150,14 @@ Then update current status after the slice is complete.
 - Access module currently uses persisted access grants and deny-by-default decisions
 - Access grant issuance is currently manual through a protected internal endpoint
 - Application layer currently ends with explicit skipped/denied/accepted request outcomes
-- `accepted` currently means readiness for the next processing stage only
+- `accepted` at the application outcome level means readiness for the next processing stage
 - Outcome consumer currently maps request outcomes to ignored/halted/ready_for_next_stage only
 - Current handled branches only log and explicitly finish the flow
 - Current outward reaction planning only plans a static denied text and does not dispatch it
+- Current accepted branch now supports a single text-in -> text-out worker path
+- Current accepted AI path uses a single OpenAI text provider adapter with the model configured via env
+- Current accepted AI path does not include attachments or conversation persistence yet
 - VK events without actor id are safely ignored by the application handoff
 - Do not mix VK transport with billing or AI logic
 - Do not start payment flows yet
-- Do not start full AI integration yet
+- Do not expand into a full AI platform yet

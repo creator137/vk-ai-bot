@@ -27,6 +27,8 @@ class VkConsumedOutcomeHandlingTests(unittest.TestCase):
         ), patch(
             "app.vk_transport.service._dispatch_to_application",
             return_value=outcome,
+        ), patch(
+            "app.vk_transport.service.dispatch_accepted_vk_event",
         ), patch("app.vk_transport.service.logger.info") as logger_info:
             returned = ApplicationVkEventHandoff().handle(event)
 
@@ -49,6 +51,8 @@ class VkConsumedOutcomeHandlingTests(unittest.TestCase):
         ), patch(
             "app.vk_transport.service._dispatch_to_application",
             return_value=outcome,
+        ), patch(
+            "app.vk_transport.service.dispatch_accepted_vk_event",
         ), patch("app.vk_transport.service.logger.info") as logger_info:
             returned = ApplicationVkEventHandoff().handle(event)
 
@@ -71,6 +75,8 @@ class VkConsumedOutcomeHandlingTests(unittest.TestCase):
         ), patch(
             "app.vk_transport.service._dispatch_to_application",
             return_value=outcome,
+        ), patch(
+            "app.vk_transport.service.dispatch_accepted_vk_event",
         ), patch("app.vk_transport.service.logger.info") as logger_info:
             returned = ApplicationVkEventHandoff().handle(event)
 
