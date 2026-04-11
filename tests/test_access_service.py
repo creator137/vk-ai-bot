@@ -8,7 +8,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.access.models import AccessGrant
-from app.access.repository import AccessGrantRepository
 from app.access.service import AccessService
 from app.db.base import Base
 from app.users.service import UserService
@@ -35,7 +34,7 @@ class AccessServiceTests(unittest.TestCase):
     def test_access_denied_when_no_grant_exists(self) -> None:
         with self.session_factory() as session:
             user = UserService(session).find_or_create_by_vk_user_id(123456)
-            service = AccessService(repository=AccessGrantRepository(session))
+            service = AccessService(session=session)
 
             decision = service.decide_for_user_id(user.id)
 
@@ -47,7 +46,7 @@ class AccessServiceTests(unittest.TestCase):
             user = UserService(session).find_or_create_by_vk_user_id(123456)
             session.add(AccessGrant(user_id=user.id))
             session.commit()
-            service = AccessService(repository=AccessGrantRepository(session))
+            service = AccessService(session=session)
 
             decision = service.decide_for_user_id(user.id)
 
@@ -65,3 +64,14 @@ class AccessServiceTests(unittest.TestCase):
 
             with self.assertRaises(IntegrityError):
                 session.commit()
+
+    def test_access_grant_issuance_is_idempotent(self) -> None:
+        with self.session_factory() as session:
+            user = UserService(session).find_or_create_by_vk_user_id(123456)
+            service = AccessService(session=session)
+
+            first_issuance = service.issue_for_user_id(user.id)
+            second_issuance = service.issue_for_user_id(user.id)
+
+        self.assertTrue(first_issuance.created)
+        self.assertFalse(second_issuance.created)

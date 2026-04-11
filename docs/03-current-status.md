@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, and minimal outward reaction slice implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, and minimal access grant issuance slice implemented.
 
 ## Current phase
 
-First explicit outward reaction slice ready. Repository prepared for the next outward delivery slice.
+Manual access grant issuance ready. Repository prepared for the next outward delivery slice.
 
 ## Completed
 
@@ -82,6 +82,10 @@ First explicit outward reaction slice ready. Repository prepared for the next ou
   - ready_for_next_stage -> no reaction
 - VK transport now plans and logs outward reactions without real VK dispatch
 - Outward reaction tests added
+- Internal protected access grant endpoint added
+- Minimal idempotent access grant issuance added
+- Access grants can now be issued through `vk_user_id -> user -> grant`
+- Access grant issuance tests added
 
 ## Accepted technical direction
 
@@ -139,7 +143,7 @@ Then update current status after the slice is complete.
 - VK transport now hands normalized events into a minimal user-aware application slice
 - Users module currently covers only minimal identity persistence and lookup/create
 - Access module currently uses persisted access grants and deny-by-default decisions
-- Access grant issuance flow is not implemented yet
+- Access grant issuance is currently manual through a protected internal endpoint
 - Application layer currently ends with explicit skipped/denied/accepted request outcomes
 - `accepted` currently means readiness for the next processing stage only
 - Outcome consumer currently maps request outcomes to ignored/halted/ready_for_next_stage only
