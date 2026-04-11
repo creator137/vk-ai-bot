@@ -2,7 +2,7 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, and minimal AI bootstrap for accepted path implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, minimal VK outward delivery slice, and minimal AI bootstrap for accepted path implemented.
 
 ## Current phase
 
@@ -86,6 +86,10 @@ First real accepted text execution path ready. Repository prepared for the next 
 - Minimal idempotent access grant issuance added
 - Access grants can now be issued through `vk_user_id -> user -> grant`
 - Access grant issuance tests added
+- Minimal VK outbound delivery adapter added
+- Planned denied VK reactions can now be delivered through `messages.send`
+- Outward delivery safely skips when `peer_id` is missing
+- VK outward delivery tests added
 - Minimal OpenAI text provider adapter added
 - Accepted `message_new` text requests now dispatch to a worker only for the accepted branch
 - Accepted non-text or non-message events now safe no-op without dispatch
@@ -153,7 +157,8 @@ Then update current status after the slice is complete.
 - `accepted` at the application outcome level means readiness for the next processing stage
 - Outcome consumer currently maps request outcomes to ignored/halted/ready_for_next_stage only
 - Current handled branches only log and explicitly finish the flow
-- Current outward reaction planning only plans a static denied text and does not dispatch it
+- Current outward reaction planning only plans a static denied text
+- Current denied outward reaction is now delivered through VK `messages.send` when outbound token is configured
 - Current accepted branch now supports a single text-in -> text-out worker path
 - Current accepted AI path uses a single OpenAI text provider adapter with the model configured via env
 - Current accepted AI path does not include attachments or conversation persistence yet
