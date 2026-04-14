@@ -30,8 +30,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://vk_ai:vk_ai@postgres:5432/vk_ai}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       VK_OUTBOUND_TOKEN: ${VK_OUTBOUND_TOKEN:-}
       VK_API_VERSION: ${VK_API_VERSION:-5.199}
     depends_on:

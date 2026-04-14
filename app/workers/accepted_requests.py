@@ -6,7 +6,13 @@ from collections.abc import Callable
 import dramatiq
 import httpx
 
-from app.ai.provider import OpenAIProviderError, OpenAIResponsesTextProvider
+from app.ai.provider import (
+    GeminiGenerateContentProvider,
+    GeminiProviderError,
+    OpenAIProviderError,
+    OpenAIResponsesTextProvider,
+    TextGenerationProvider,
+)
 from app.core.config import get_settings
 from app.db.session import get_session_factory
 from app.requests.service import AcceptedRequestPersistenceService
@@ -21,13 +27,6 @@ logger = logging.getLogger(__name__)
 @dramatiq.actor(queue_name="accepted_requests")
 def process_vk_accepted_text_request(user_id: int, peer_id: int, text: str) -> None:
     settings = get_settings()
-    if not settings.openai_api_key:
-        logger.warning(
-            "Accepted VK text request skipped: peer_id=%s reason=missing_openai_api_key",
-            peer_id,
-        )
-        return
-
     if not settings.vk_outbound_token:
         logger.warning(
             "Accepted VK text request skipped: peer_id=%s reason=missing_vk_outbound_token",
@@ -35,10 +34,10 @@ def process_vk_accepted_text_request(user_id: int, peer_id: int, text: str) -> N
         )
         return
 
-    provider = OpenAIResponsesTextProvider(
-        api_key=settings.openai_api_key,
-        model=settings.openai_model,
-    )
+    provider = _build_text_provider(settings, peer_id=peer_id)
+    if provider is None:
+        return
+
     messages_api = VkMessagesApi(
         token=settings.vk_outbound_token,
         api_version=settings.vk_api_version,
@@ -52,7 +51,7 @@ def process_vk_accepted_text_request(user_id: int, peer_id: int, text: str) -> N
             messages_api=messages_api,
             persist_exchange=_persist_accepted_text_exchange,
         )
-    except (OpenAIProviderError, VkApiError, httpx.HTTPError) as error:
+    except (OpenAIProviderError, GeminiProviderError, VkApiError, httpx.HTTPError) as error:
         logger.warning(
             "Accepted VK text request failed: user_id=%s peer_id=%s error=%s",
             user_id,
@@ -66,7 +65,7 @@ def run_accepted_vk_text_request(
     user_id: int,
     peer_id: int,
     text: str,
-    provider: OpenAIResponsesTextProvider,
+    provider: TextGenerationProvider,
     messages_api: VkMessagesApi,
     persist_exchange: Callable[..., None],
 ) -> None:
@@ -83,6 +82,33 @@ def run_accepted_vk_text_request(
         messages_api=messages_api,
     )
     logger.info("Accepted VK text request completed: user_id=%s peer_id=%s", user_id, peer_id)
+
+
+def _build_text_provider(settings, *, peer_id: int) -> TextGenerationProvider | None:
+    if settings.ai_provider == "gemini":
+        if not settings.gemini_api_key:
+            logger.warning(
+                "Accepted VK text request skipped: peer_id=%s reason=missing_gemini_api_key",
+                peer_id,
+            )
+            return None
+
+        return GeminiGenerateContentProvider(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+        )
+
+    if not settings.openai_api_key:
+        logger.warning(
+            "Accepted VK text request skipped: peer_id=%s reason=missing_openai_api_key",
+            peer_id,
+        )
+        return None
+
+    return OpenAIResponsesTextProvider(
+        api_key=settings.openai_api_key,
+        model=settings.openai_model,
+    )
 
 
 def _persist_accepted_text_exchange(

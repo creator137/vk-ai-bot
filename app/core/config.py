@@ -11,8 +11,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     database_url: str = "postgresql+psycopg://vk_ai:vk_ai@localhost:5432/vk_ai"
     redis_url: str = "redis://localhost:6379/0"
+    ai_provider: str = "openai"
     openai_api_key: str | None = None
     openai_model: str = "gpt-5-mini"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
     internal_access_token: str | None = None
     vk_outbound_token: str | None = None
     vk_api_version: str = "5.199"

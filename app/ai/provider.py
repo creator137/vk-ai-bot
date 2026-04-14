@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
 
 class OpenAIProviderError(RuntimeError):
     """Raised when the OpenAI API request or payload is invalid for this flow."""
+
+
+class GeminiProviderError(RuntimeError):
+    """Raised when the Gemini API request or payload is invalid for this flow."""
+
+
+class TextGenerationProvider(Protocol):
+    def generate_text(self, prompt: str) -> str: ...
 
 
 class OpenAIResponsesTextProvider:
@@ -60,6 +68,67 @@ class OpenAIResponsesTextProvider:
             return client.post(url, headers=headers, json=json, timeout=30.0)
 
 
+class GeminiGenerateContentProvider:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._client = client
+
+    def generate_text(self, prompt: str) -> str:
+        response = self._post(
+            (
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{self._model}:generateContent"
+            ),
+            json={
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "text": prompt,
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise GeminiProviderError(_build_http_error_message(error.response)) from error
+
+        body = response.json()
+        error_payload = body.get("error")
+        if isinstance(error_payload, dict):
+            message = error_payload.get("message")
+            if isinstance(message, str) and message:
+                raise GeminiProviderError(message)
+            raise GeminiProviderError("Gemini API returned an error payload")
+
+        text = _extract_gemini_output_text(body)
+        if not text:
+            raise GeminiProviderError("Gemini response did not contain output text")
+
+        return text
+
+    def _post(self, url: str, *, json: dict[str, Any]) -> httpx.Response:
+        headers = {
+            "x-goog-api-key": self._api_key,
+            "Content-Type": "application/json",
+        }
+        if self._client is not None:
+            return self._client.post(url, headers=headers, json=json, timeout=30.0)
+
+        with httpx.Client() as client:
+            return client.post(url, headers=headers, json=json, timeout=30.0)
+
+
 def _extract_output_text(body: dict[str, Any]) -> str:
     output_text = body.get("output_text")
     if isinstance(output_text, str) and output_text.strip():
@@ -84,6 +153,34 @@ def _extract_output_text(body: dict[str, Any]) -> str:
             if content_item.get("type") != "output_text":
                 continue
             text = content_item.get("text")
+            if isinstance(text, str) and text:
+                parts.append(text)
+
+    return "".join(parts).strip()
+
+
+def _extract_gemini_output_text(body: dict[str, Any]) -> str:
+    candidates = body.get("candidates")
+    if not isinstance(candidates, list):
+        return ""
+
+    parts: list[str] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+
+        content = candidate.get("content")
+        if not isinstance(content, dict):
+            continue
+
+        content_parts = content.get("parts")
+        if not isinstance(content_parts, list):
+            continue
+
+        for part in content_parts:
+            if not isinstance(part, dict):
+                continue
+            text = part.get("text")
             if isinstance(text, str) and text:
                 parts.append(text)
 

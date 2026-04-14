@@ -95,6 +95,8 @@ First minimal accepted request persistence/context slice ready. Repository prepa
 - Accepted non-text or non-message events now safe no-op without dispatch
 - Worker now calls the AI provider and delivers text replies back through the existing VK outward delivery path
 - Accepted AI bootstrap tests added
+- Minimal Gemini text provider adapter added
+- Accepted AI worker now supports env-driven provider selection between OpenAI and Gemini
 - Minimal accepted request record model added
 - Accepted request record migration added
 - Minimal accepted request persistence service added
@@ -165,7 +167,7 @@ Then update current status after the slice is complete.
 - Current outward reaction planning only plans a static denied text
 - Current denied outward reaction is now delivered through VK `messages.send` when outbound token is configured
 - Current accepted branch now supports a single text-in -> text-out worker path
-- Current accepted AI path uses a single OpenAI text provider adapter with the model configured via env
+- Current accepted AI path supports OpenAI and Gemini text providers selected via env
 - Current accepted AI path now persists minimal accepted text request/response pairs
 - Current accepted AI path still does not include attachments or broader conversation memory yet
 - VK events without actor id are safely ignored by the application handoff
