@@ -44,11 +44,21 @@ def dispatch_accepted_vk_event(event: NormalizedVkEvent) -> None:
         )
         return
 
-    _get_accepted_request_actor().send(event.peer_id, text)
+    user_id = _extract_user_id(event)
+    if user_id is None:
+        logger.info(
+            "Accepted VK dispatch skipped: type=%s event_id=%s reason=missing_user_id",
+            event.event_type,
+            event.event_id,
+        )
+        return
+
+    _get_accepted_request_actor().send(user_id, event.peer_id, text)
     logger.info(
-        "Accepted VK dispatch enqueued: type=%s event_id=%s peer_id=%s",
+        "Accepted VK dispatch enqueued: type=%s event_id=%s user_id=%s peer_id=%s",
         event.event_type,
         event.event_id,
+        user_id,
         event.peer_id,
     )
 
@@ -68,6 +78,13 @@ def _extract_text(value: Any) -> str | None:
         return None
 
     return text
+
+
+def _extract_user_id(event: NormalizedVkEvent) -> int | None:
+    value = event.payload.get("user_id")
+    if isinstance(value, int) and value > 0:
+        return value
+    return None
 
 
 def _get_accepted_request_actor():

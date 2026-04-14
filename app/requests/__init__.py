@@ -1,0 +1,1 @@
+"""Accepted request persistence module."""

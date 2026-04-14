@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, minimal VK outward delivery slice, and minimal AI bootstrap for accepted path implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, minimal VK outward delivery slice, minimal AI bootstrap for accepted path, and minimal accepted request persistence slice implemented.
 
 ## Current phase
 
-First real accepted text execution path ready. Repository prepared for the next request persistence/context slice.
+First minimal accepted request persistence/context slice ready. Repository prepared for the next context evolution step.
 
 ## Completed
 
@@ -95,6 +95,11 @@ First real accepted text execution path ready. Repository prepared for the next 
 - Accepted non-text or non-message events now safe no-op without dispatch
 - Worker now calls the AI provider and delivers text replies back through the existing VK outward delivery path
 - Accepted AI bootstrap tests added
+- Minimal accepted request record model added
+- Accepted request record migration added
+- Minimal accepted request persistence service added
+- Accepted worker now persists accepted text request/response pairs before VK delivery
+- Accepted request persistence tests added
 
 ## Accepted technical direction
 
@@ -118,23 +123,23 @@ First real accepted text execution path ready. Repository prepared for the next 
 
 ## Next recommended step
 
-Implement the first minimal request persistence/context slice on top of the current accepted text path:
+Implement the next minimal context evolution slice on top of current accepted request persistence:
 
 1. keep denied and accepted delivery behavior unchanged
-2. persist a minimal request/response record for accepted text flows
+2. build only the smallest useful read/context continuation on top of saved pairs
 3. do not add payment logic yet
 4. do not add attachments yet
 5. do not add broad conversation memory yet
 
 ## Recommended next branch
 
-`feat/request-persistence-bootstrap`
+`feat/request-context-bootstrap`
 
 ## Recommended next task for AI
 
-Implement only the minimal request persistence/context slice:
+Implement only the next minimal request context slice:
 
-- persist accepted text request/response pairs
+- reuse persisted accepted text request/response pairs in the narrowest safe way
 - no broad conversation system
 - no billing logic
 - no attachments yet
@@ -161,7 +166,8 @@ Then update current status after the slice is complete.
 - Current denied outward reaction is now delivered through VK `messages.send` when outbound token is configured
 - Current accepted branch now supports a single text-in -> text-out worker path
 - Current accepted AI path uses a single OpenAI text provider adapter with the model configured via env
-- Current accepted AI path does not include attachments or conversation persistence yet
+- Current accepted AI path now persists minimal accepted text request/response pairs
+- Current accepted AI path still does not include attachments or broader conversation memory yet
 - VK events without actor id are safely ignored by the application handoff
 - Do not mix VK transport with billing or AI logic
 - Do not start payment flows yet

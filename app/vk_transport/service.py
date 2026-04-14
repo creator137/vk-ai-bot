@@ -43,7 +43,7 @@ class ApplicationVkEventHandoff:
             outcome = _dispatch_to_application(session, event)
         consumption = consume_request_outcome(outcome)
         _handle_consumed_outcome(event, outcome, consumption)
-        _dispatch_accepted_event(event, consumption)
+        _dispatch_accepted_event(event, outcome, consumption)
         reaction = _plan_outward_reaction(event, consumption)
         _deliver_outward_reaction(event, reaction)
         return outcome
@@ -120,11 +120,16 @@ def _plan_outward_reaction(
 
 def _dispatch_accepted_event(
     event: NormalizedVkEvent,
+    outcome: RequestOutcome,
     consumption: OutcomeConsumption,
 ) -> None:
     if consumption.state != "ready_for_next_stage":
         return
 
+    if outcome.user_id is None:
+        return
+
+    event.payload["user_id"] = outcome.user_id
     dispatch_accepted_vk_event(event)
 
 

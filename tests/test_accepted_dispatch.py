@@ -21,7 +21,7 @@ class AcceptedDispatchTests(unittest.TestCase):
         ):
             dispatch_accepted_vk_event(event)
 
-        actor.send.assert_called_once_with(321, "hello")
+        actor.send.assert_called_once_with(1, 321, "hello")
 
     def test_accepted_non_text_or_non_message_event_does_not_dispatch(self) -> None:
         cases = [
@@ -60,5 +60,5 @@ def _build_event(
         actor_id=123456,
         peer_id=peer_id,
         occurred_at=1710000000,
-        payload=payload,
+        payload={"user_id": 1, **payload},
     )
