@@ -30,6 +30,17 @@ class WorkerProviderSelectionTests(unittest.TestCase):
 
         self.assertEqual(provider.__class__.__name__, "GeminiGenerateContentProvider")
 
+    def test_builds_claude_provider_when_selected(self) -> None:
+        settings = Settings(
+            ai_provider="claude",
+            claude_api_key="claude-key",
+            claude_model="claude-sonnet-4-20250514",
+        )
+
+        provider = _build_text_provider(settings, peer_id=321)
+
+        self.assertEqual(provider.__class__.__name__, "ClaudeMessagesTextProvider")
+
     def test_returns_none_when_selected_provider_key_is_missing(self) -> None:
         settings = Settings(ai_provider="gemini", gemini_api_key=None)
 
@@ -39,4 +50,15 @@ class WorkerProviderSelectionTests(unittest.TestCase):
         self.assertIsNone(provider)
         self.assertTrue(
             any("missing_gemini_api_key" in call.args[0] for call in logger_warning.call_args_list)
+        )
+
+    def test_returns_none_when_claude_key_is_missing(self) -> None:
+        settings = Settings(ai_provider="claude", claude_api_key=None)
+
+        with patch("app.workers.accepted_requests.logger.warning") as logger_warning:
+            provider = _build_text_provider(settings, peer_id=321)
+
+        self.assertIsNone(provider)
+        self.assertTrue(
+            any("missing_claude_api_key" in call.args[0] for call in logger_warning.call_args_list)
         )

@@ -4,7 +4,11 @@ import unittest
 
 import httpx
 
-from app.ai.provider import GeminiGenerateContentProvider, OpenAIResponsesTextProvider
+from app.ai.provider import (
+    ClaudeMessagesTextProvider,
+    GeminiGenerateContentProvider,
+    OpenAIResponsesTextProvider,
+)
 
 
 class AIProviderTests(unittest.TestCase):
@@ -58,6 +62,27 @@ class AIProviderTests(unittest.TestCase):
         )
 
         self.assertEqual(provider.generate_text("hello"), "Privet from Gemini")
+
+    def test_claude_provider_extracts_text(self) -> None:
+        provider = ClaudeMessagesTextProvider(
+            api_key="test-key",
+            model="claude-sonnet-4-20250514",
+            client=_MockClient(
+                _build_response(
+                    "https://api.anthropic.com/v1/messages",
+                    {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Privet from Claude",
+                            }
+                        ]
+                    },
+                )
+            ),
+        )
+
+        self.assertEqual(provider.generate_text("hello"), "Privet from Claude")
 
 
 class _MockClient:

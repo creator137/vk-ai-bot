@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5-mini"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    claude_api_key: str | None = None
+    claude_model: str = "claude-sonnet-4-20250514"
     internal_access_token: str | None = None
     vk_outbound_token: str | None = None
     vk_api_version: str = "5.199"

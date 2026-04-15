@@ -13,6 +13,10 @@ class GeminiProviderError(RuntimeError):
     """Raised when the Gemini API request or payload is invalid for this flow."""
 
 
+class ClaudeProviderError(RuntimeError):
+    """Raised when the Claude API request or payload is invalid for this flow."""
+
+
 class TextGenerationProvider(Protocol):
     def generate_text(self, prompt: str) -> str: ...
 
@@ -129,6 +133,64 @@ class GeminiGenerateContentProvider:
             return client.post(url, headers=headers, json=json, timeout=30.0)
 
 
+class ClaudeMessagesTextProvider:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._client = client
+
+    def generate_text(self, prompt: str) -> str:
+        response = self._post(
+            "https://api.anthropic.com/v1/messages",
+            json={
+                "model": self._model,
+                "max_tokens": 256,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+            },
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise ClaudeProviderError(_build_http_error_message(error.response)) from error
+
+        body = response.json()
+        error_payload = body.get("error")
+        if isinstance(error_payload, dict):
+            message = error_payload.get("message")
+            if isinstance(message, str) and message:
+                raise ClaudeProviderError(message)
+            raise ClaudeProviderError("Claude API returned an error payload")
+
+        text = _extract_claude_output_text(body)
+        if not text:
+            raise ClaudeProviderError("Claude response did not contain output text")
+
+        return text
+
+    def _post(self, url: str, *, json: dict[str, Any]) -> httpx.Response:
+        headers = {
+            "x-api-key": self._api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        if self._client is not None:
+            return self._client.post(url, headers=headers, json=json, timeout=30.0)
+
+        with httpx.Client() as client:
+            return client.post(url, headers=headers, json=json, timeout=30.0)
+
+
 def _extract_output_text(body: dict[str, Any]) -> str:
     output_text = body.get("output_text")
     if isinstance(output_text, str) and output_text.strip():
@@ -187,8 +249,26 @@ def _extract_gemini_output_text(body: dict[str, Any]) -> str:
     return "".join(parts).strip()
 
 
+def _extract_claude_output_text(body: dict[str, Any]) -> str:
+    content = body.get("content")
+    if not isinstance(content, list):
+        return ""
+
+    parts: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "text":
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text:
+            parts.append(text)
+
+    return "".join(parts).strip()
+
+
 def _build_http_error_message(response: httpx.Response) -> str:
-    message = f"OpenAI API request failed with status {response.status_code}"
+    message = f"AI provider request failed with status {response.status_code}"
     try:
         body = response.json()
     except ValueError:

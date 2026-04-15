@@ -7,6 +7,8 @@ import dramatiq
 import httpx
 
 from app.ai.provider import (
+    ClaudeMessagesTextProvider,
+    ClaudeProviderError,
     GeminiGenerateContentProvider,
     GeminiProviderError,
     OpenAIProviderError,
@@ -51,7 +53,13 @@ def process_vk_accepted_text_request(user_id: int, peer_id: int, text: str) -> N
             messages_api=messages_api,
             persist_exchange=_persist_accepted_text_exchange,
         )
-    except (OpenAIProviderError, GeminiProviderError, VkApiError, httpx.HTTPError) as error:
+    except (
+        OpenAIProviderError,
+        GeminiProviderError,
+        ClaudeProviderError,
+        VkApiError,
+        httpx.HTTPError,
+    ) as error:
         logger.warning(
             "Accepted VK text request failed: user_id=%s peer_id=%s error=%s",
             user_id,
@@ -85,6 +93,19 @@ def run_accepted_vk_text_request(
 
 
 def _build_text_provider(settings, *, peer_id: int) -> TextGenerationProvider | None:
+    if settings.ai_provider == "claude":
+        if not settings.claude_api_key:
+            logger.warning(
+                "Accepted VK text request skipped: peer_id=%s reason=missing_claude_api_key",
+                peer_id,
+            )
+            return None
+
+        return ClaudeMessagesTextProvider(
+            api_key=settings.claude_api_key,
+            model=settings.claude_model,
+        )
+
     if settings.ai_provider == "gemini":
         if not settings.gemini_api_key:
             logger.warning(
