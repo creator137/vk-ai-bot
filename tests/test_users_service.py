@@ -61,7 +61,18 @@ class UsersBootstrapTests(unittest.TestCase):
             with self.assertRaises(IntegrityError):
                 second_repository.create(123456)
 
+    def test_set_selected_provider_updates_user(self) -> None:
+        with self.session_factory() as session:
+            service = UserService(session)
+            user = service.find_or_create_by_vk_user_id(123456)
+
+            updated = service.set_selected_provider(
+                user_id=user.id,
+                provider_code="gemini",
+            )
+
+        self.assertEqual(updated.selected_provider, "gemini")
+
     @staticmethod
     def _count_users(session: Session) -> int:
         return len(session.execute(select(User)).scalars().all())
-

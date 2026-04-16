@@ -20,3 +20,6 @@ class UserRepository:
         self._session.flush()
         return user
 
+    def get_by_id(self, user_id: int) -> User | None:
+        statement = select(User).where(User.id == user_id)
+        return self._session.execute(statement).scalar_one_or_none()

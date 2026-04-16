@@ -6,6 +6,7 @@ from urllib.parse import parse_qs
 
 import httpx
 
+from app.vk_transport.keyboards import build_cabinet_inline_keyboard
 from app.vk_transport.delivery import deliver_planned_vk_reaction
 from app.vk_transport.outward_reactions import VkOutwardReactionPlan
 from app.vk_transport.schemas import NormalizedVkEvent
@@ -28,7 +29,11 @@ class VkMessagesApiTests(unittest.TestCase):
             client=client,
         )
 
-        api.send_text_message(peer_id=2000000001, text="Denied")
+        api.send_text_message(
+            peer_id=2000000001,
+            text="Denied",
+            keyboard=build_cabinet_inline_keyboard(),
+        )
 
         self.assertEqual(captured["url"], "https://api.vk.com/method/messages.send")
         body = parse_qs(captured["body"])
@@ -36,6 +41,7 @@ class VkMessagesApiTests(unittest.TestCase):
         self.assertEqual(body["message"], ["Denied"])
         self.assertEqual(body["access_token"], ["test-token"])
         self.assertEqual(body["v"], ["5.199"])
+        self.assertIn("keyboard", body)
         self.assertIn("random_id", body)
 
 
@@ -63,6 +69,7 @@ class VkDeliveryTests(unittest.TestCase):
         messages_api.send_text_message.assert_called_once_with(
             peer_id=321,
             text="Denied",
+            keyboard=None,
         )
 
     def test_send_text_reaction_without_peer_id_skips_delivery(self) -> None:

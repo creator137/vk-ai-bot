@@ -19,6 +19,9 @@ class AcceptedRequestRecord(Base):
     peer_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     request_text: Mapped[str] = mapped_column(Text, nullable=False)
     response_text: Mapped[str] = mapped_column(Text, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(nullable=False, server_default="0")
+    output_tokens: Mapped[int] = mapped_column(nullable=False, server_default="0")
+    total_tokens: Mapped[int] = mapped_column(nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

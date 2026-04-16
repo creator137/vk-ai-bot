@@ -34,7 +34,11 @@ def deliver_planned_vk_reaction(
         )
         return
 
-    messages_api.send_text_message(peer_id=event.peer_id, text=reaction.text)
+    messages_api.send_text_message(
+        peer_id=event.peer_id,
+        text=reaction.text,
+        keyboard=reaction.keyboard,
+    )
     logger.info(
         (
             "VK outward reaction delivered: type=%s event_id=%s "

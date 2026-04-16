@@ -6,6 +6,14 @@ from typing import Literal
 
 @dataclass(frozen=True, slots=True)
 class RequestOutcome:
-    status: Literal["skipped", "denied", "accepted"]
-    reason: Literal["missing_actor_id", "access_denied", "access_allowed"]
+    status: Literal["skipped", "denied", "accepted", "handled"]
+    reason: Literal[
+        "missing_actor_id",
+        "access_denied",
+        "access_allowed",
+        "provider_selected",
+        "cabinet_shown",
+        "plans_shown",
+        "plan_preview_shown",
+    ]
     user_id: int | None = None

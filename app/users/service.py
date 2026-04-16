@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.ai.provider_catalog import get_provider_option
 from app.users.models import User
 from app.users.repository import UserRepository
 
@@ -34,3 +35,16 @@ class UserService:
 
         return user
 
+    def set_selected_provider(self, *, user_id: int, provider_code: str) -> User:
+        get_provider_option(provider_code)
+        user = self._repository.get_by_id(user_id)
+        if user is None:
+            raise ValueError(f"User not found: {user_id}")
+
+        user.selected_provider = provider_code
+        self._session.commit()
+        self._session.refresh(user)
+        return user
+
+    def get_by_id(self, user_id: int) -> User | None:
+        return self._repository.get_by_id(user_id)

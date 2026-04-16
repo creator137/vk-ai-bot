@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, minimal VK outward delivery slice, minimal AI bootstrap for accepted path, and minimal accepted request persistence slice implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, minimal VK outward delivery slice, minimal AI bootstrap for accepted path, minimal accepted request persistence slice, and minimal subscription/token accounting slice implemented.
 
 ## Current phase
 
-First minimal accepted request persistence/context slice ready. Repository prepared for the next context evolution step.
+First minimal subscription token accounting slice ready. Repository prepared for rollout and verification before any payment or broader context work.
 
 ## Completed
 
@@ -91,18 +91,31 @@ First minimal accepted request persistence/context slice ready. Repository prepa
 - Outward delivery safely skips when `peer_id` is missing
 - VK outward delivery tests added
 - Minimal OpenAI text provider adapter added
+- Minimal Gemini text provider adapter added
+- Minimal Claude text provider adapter added
+- Accepted AI worker now supports env-driven provider selection between OpenAI, Gemini, and Claude
 - Accepted `message_new` text requests now dispatch to a worker only for the accepted branch
 - Accepted non-text or non-message events now safe no-op without dispatch
 - Worker now calls the AI provider and delivers text replies back through the existing VK outward delivery path
 - Accepted AI bootstrap tests added
-- Minimal Gemini text provider adapter added
-- Minimal Claude text provider adapter added
-- Accepted AI worker now supports env-driven provider selection between OpenAI, Gemini, and Claude
 - Minimal accepted request record model added
 - Accepted request record migration added
 - Minimal accepted request persistence service added
 - Accepted worker now persists accepted text request/response pairs before VK delivery
 - Accepted request persistence tests added
+- Minimal subscription catalog added:
+  - Lite — 379₽ — 35000 tokens
+  - Pro — 599₽ — 100000 tokens
+  - Max — 1190₽ — 200000 tokens
+- Minimal user subscription model added
+- User subscription migration added
+- Internal protected subscription issuance endpoint added
+- Access boundary now allows either manual grant or active subscription with remaining tokens
+- Denied VK text now shows available subscription plans and token accounting rule
+- AI providers now return factual input/output token usage when available from API responses
+- Accepted worker now persists input/output/total token usage for each accepted text exchange
+- Accepted worker now deducts tokens from active subscriptions by factual input + output usage
+- Subscription tests added
 
 ## Accepted technical direction
 
@@ -126,52 +139,53 @@ First minimal accepted request persistence/context slice ready. Repository prepa
 
 ## Next recommended step
 
-Implement the next minimal context evolution slice on top of current accepted request persistence:
+Roll out and verify the current subscription-aware accepted path before any broader billing or context step:
 
-1. keep denied and accepted delivery behavior unchanged
-2. build only the smallest useful read/context continuation on top of saved pairs
-3. do not add payment logic yet
-4. do not add attachments yet
-5. do not add broad conversation memory yet
+1. apply the latest migration on the server
+2. issue test subscriptions through the internal endpoint
+3. verify accepted requests spend factual provider usage
+4. verify denied responses show plans when no active access is present
+5. keep payment collection, attachments, and broader memory out of scope for now
 
 ## Recommended next branch
 
-`feat/request-context-bootstrap`
+`feat/subscription-rollout-verification`
 
 ## Recommended next task for AI
 
-Implement only the next minimal request context slice:
+Complete rollout and verification of the existing subscription slice:
 
-- reuse persisted accepted text request/response pairs in the narrowest safe way
-- no broad conversation system
-- no billing logic
-- no attachments yet
-- no subscription/payment orchestration yet
-- no usage accounting yet
+- deploy the latest migration and worker/api code
+- issue subscriptions through the protected internal endpoint
+- confirm accepted requests deduct factual provider usage
+- confirm denied responses show plans when access is absent
+- do not add payment collection yet
+- do not add broader conversation context yet
 
-Then update current status after the slice is complete.
+Then update current status after the rollout is confirmed.
 
 ## Notes
 
 - Foundation is now in place
-- Business modules beyond users are not implemented yet
+- Business modules beyond users are still intentionally small
 - Current local Docker stack does not include Nginx; this is intentionally deferred
 - VK transport currently validates payload shape, optional callback secret, and normalizes events
 - VK transport now hands normalized events into a minimal user-aware application slice
 - Users module currently covers only minimal identity persistence and lookup/create
-- Access module currently uses persisted access grants and deny-by-default decisions
+- Access module currently supports either persisted manual grants or active subscriptions with remaining balance
 - Access grant issuance is currently manual through a protected internal endpoint
+- Subscription issuance is currently manual through a protected internal endpoint
 - Application layer currently ends with explicit skipped/denied/accepted request outcomes
 - `accepted` at the application outcome level means readiness for the next processing stage
 - Outcome consumer currently maps request outcomes to ignored/halted/ready_for_next_stage only
 - Current handled branches only log and explicitly finish the flow
-- Current outward reaction planning only plans a static denied text
 - Current denied outward reaction is now delivered through VK `messages.send` when outbound token is configured
+- Current denied message also serves as the simple subscription interface
 - Current accepted branch now supports a single text-in -> text-out worker path
 - Current accepted AI path supports OpenAI, Gemini, and Claude text providers selected via env
-- Current accepted AI path now persists minimal accepted text request/response pairs
-- Current accepted AI path still does not include attachments or broader conversation memory yet
+- Current accepted AI path now persists minimal accepted text request/response pairs plus token usage
+- Current accepted AI path now deducts factual input + output tokens from the user's active subscription
+- Current accepted AI path still does not include automated payments, attachments, or broader conversation memory yet
 - VK events without actor id are safely ignored by the application handoff
-- Do not mix VK transport with billing or AI logic
-- Do not start payment flows yet
+- Do not mix VK transport with payment collection logic yet
 - Do not expand into a full AI platform yet

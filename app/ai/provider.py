@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
@@ -18,7 +19,18 @@ class ClaudeProviderError(RuntimeError):
 
 
 class TextGenerationProvider(Protocol):
-    def generate_text(self, prompt: str) -> str: ...
+    def generate_text(self, prompt: str) -> "TextGenerationResult": ...
+
+
+@dataclass(frozen=True, slots=True)
+class TextGenerationResult:
+    text: str
+    input_tokens: int
+    output_tokens: int
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
 
 
 class OpenAIResponsesTextProvider:
@@ -33,7 +45,7 @@ class OpenAIResponsesTextProvider:
         self._model = model
         self._client = client
 
-    def generate_text(self, prompt: str) -> str:
+    def generate_text(self, prompt: str) -> TextGenerationResult:
         response = self._post(
             "https://api.openai.com/v1/responses",
             json={
@@ -58,7 +70,12 @@ class OpenAIResponsesTextProvider:
         if not text:
             raise OpenAIProviderError("OpenAI response did not contain output text")
 
-        return text
+        usage = _extract_openai_usage(body)
+        return TextGenerationResult(
+            text=text,
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+        )
 
     def _post(self, url: str, *, json: dict[str, Any]) -> httpx.Response:
         headers = {
@@ -84,7 +101,7 @@ class GeminiGenerateContentProvider:
         self._model = model
         self._client = client
 
-    def generate_text(self, prompt: str) -> str:
+    def generate_text(self, prompt: str) -> TextGenerationResult:
         response = self._post(
             (
                 "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -119,7 +136,12 @@ class GeminiGenerateContentProvider:
         if not text:
             raise GeminiProviderError("Gemini response did not contain output text")
 
-        return text
+        usage = _extract_gemini_usage(body)
+        return TextGenerationResult(
+            text=text,
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+        )
 
     def _post(self, url: str, *, json: dict[str, Any]) -> httpx.Response:
         headers = {
@@ -145,7 +167,7 @@ class ClaudeMessagesTextProvider:
         self._model = model
         self._client = client
 
-    def generate_text(self, prompt: str) -> str:
+    def generate_text(self, prompt: str) -> TextGenerationResult:
         response = self._post(
             "https://api.anthropic.com/v1/messages",
             json={
@@ -176,7 +198,12 @@ class ClaudeMessagesTextProvider:
         if not text:
             raise ClaudeProviderError("Claude response did not contain output text")
 
-        return text
+        usage = _extract_claude_usage(body)
+        return TextGenerationResult(
+            text=text,
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+        )
 
     def _post(self, url: str, *, json: dict[str, Any]) -> httpx.Response:
         headers = {
@@ -249,6 +276,28 @@ def _extract_gemini_output_text(body: dict[str, Any]) -> str:
     return "".join(parts).strip()
 
 
+def _extract_openai_usage(body: dict[str, Any]) -> dict[str, int]:
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return {"input_tokens": 0, "output_tokens": 0}
+
+    return {
+        "input_tokens": _extract_non_negative_int(usage.get("input_tokens")),
+        "output_tokens": _extract_non_negative_int(usage.get("output_tokens")),
+    }
+
+
+def _extract_gemini_usage(body: dict[str, Any]) -> dict[str, int]:
+    usage = body.get("usageMetadata")
+    if not isinstance(usage, dict):
+        return {"input_tokens": 0, "output_tokens": 0}
+
+    return {
+        "input_tokens": _extract_non_negative_int(usage.get("promptTokenCount")),
+        "output_tokens": _extract_non_negative_int(usage.get("candidatesTokenCount")),
+    }
+
+
 def _extract_claude_output_text(body: dict[str, Any]) -> str:
     content = body.get("content")
     if not isinstance(content, list):
@@ -265,6 +314,23 @@ def _extract_claude_output_text(body: dict[str, Any]) -> str:
             parts.append(text)
 
     return "".join(parts).strip()
+
+
+def _extract_claude_usage(body: dict[str, Any]) -> dict[str, int]:
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return {"input_tokens": 0, "output_tokens": 0}
+
+    return {
+        "input_tokens": _extract_non_negative_int(usage.get("input_tokens")),
+        "output_tokens": _extract_non_negative_int(usage.get("output_tokens")),
+    }
+
+
+def _extract_non_negative_int(value: Any) -> int:
+    if isinstance(value, int) and value >= 0:
+        return value
+    return 0
 
 
 def _build_http_error_message(response: httpx.Response) -> str:

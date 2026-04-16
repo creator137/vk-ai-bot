@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.access.models import AccessGrant
 from app.application.vk_events import build_vk_event_application_handler
 from app.db.base import Base
+from app.subscriptions.service import SubscriptionService
 from app.users.models import User
 from app.users.service import UserService
 from app.vk_transport.schemas import NormalizedVkEvent
@@ -70,6 +71,31 @@ class VkAccessBoundaryTests(unittest.TestCase):
             user = UserService(session).find_or_create_by_vk_user_id(123456)
             session.add(AccessGrant(user_id=user.id))
             session.commit()
+            handler = build_vk_event_application_handler(session)
+
+            outcome = handler.handle(event)
+
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual(outcome.reason, "access_allowed")
+        self.assertEqual(outcome.user_id, user.id)
+
+    def test_vk_flow_returns_accepted_when_user_has_active_subscription(self) -> None:
+        event = NormalizedVkEvent(
+            event_type="message_new",
+            group_id=1,
+            event_id="evt-1",
+            actor_id=123456,
+            peer_id=321,
+            occurred_at=1710000000,
+            payload={"message": {"text": "hello"}},
+        )
+
+        with self.session_factory() as session:
+            user = UserService(session).find_or_create_by_vk_user_id(123456)
+            SubscriptionService(session=session).issue_for_user_id(
+                user_id=user.id,
+                plan_code="lite",
+            )
             handler = build_vk_event_application_handler(session)
 
             outcome = handler.handle(event)

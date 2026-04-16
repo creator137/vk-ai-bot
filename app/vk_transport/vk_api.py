@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from secrets import randbelow
 from typing import Any
 
@@ -22,7 +23,13 @@ class VkMessagesApi:
         self._api_version = api_version
         self._client = client
 
-    def send_text_message(self, *, peer_id: int, text: str) -> None:
+    def send_text_message(
+        self,
+        *,
+        peer_id: int,
+        text: str,
+        keyboard: dict[str, Any] | None = None,
+    ) -> None:
         payload = {
             "peer_id": peer_id,
             "message": text,
@@ -30,6 +37,8 @@ class VkMessagesApi:
             "access_token": self._token,
             "v": self._api_version,
         }
+        if keyboard is not None:
+            payload["keyboard"] = json.dumps(keyboard, ensure_ascii=False)
 
         response = self._post("https://api.vk.com/method/messages.send", data=payload)
         response.raise_for_status()

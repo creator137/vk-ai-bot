@@ -35,3 +35,14 @@ class VkOutcomeConsumerTests(unittest.TestCase):
         consumed = consume_request_outcome(outcome)
 
         self.assertEqual(consumed.state, "ready_for_next_stage")
+
+    def test_handled_outcome_maps_to_completed(self) -> None:
+        outcome = RequestOutcome(
+            status="handled",
+            reason="provider_selected",
+            user_id=1,
+        )
+
+        consumed = consume_request_outcome(outcome)
+
+        self.assertEqual(consumed.state, "completed")

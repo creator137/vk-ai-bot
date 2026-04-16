@@ -8,6 +8,7 @@ from app.ai.provider import (
     ClaudeMessagesTextProvider,
     GeminiGenerateContentProvider,
     OpenAIResponsesTextProvider,
+    TextGenerationResult,
 )
 
 
@@ -20,6 +21,10 @@ class AIProviderTests(unittest.TestCase):
                 _build_response(
                     "https://api.openai.com/v1/responses",
                     {
+                        "usage": {
+                            "input_tokens": 12,
+                            "output_tokens": 7,
+                        },
                         "output": [
                             {
                                 "content": [
@@ -35,7 +40,14 @@ class AIProviderTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(provider.generate_text("hello"), "Hello from OpenAI")
+        self.assertEqual(
+            provider.generate_text("hello"),
+            TextGenerationResult(
+                text="Hello from OpenAI",
+                input_tokens=12,
+                output_tokens=7,
+            ),
+        )
 
     def test_gemini_provider_extracts_text(self) -> None:
         provider = GeminiGenerateContentProvider(
@@ -45,6 +57,10 @@ class AIProviderTests(unittest.TestCase):
                 _build_response(
                     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
                     {
+                        "usageMetadata": {
+                            "promptTokenCount": 9,
+                            "candidatesTokenCount": 4,
+                        },
                         "candidates": [
                             {
                                 "content": {
@@ -61,7 +77,14 @@ class AIProviderTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(provider.generate_text("hello"), "Privet from Gemini")
+        self.assertEqual(
+            provider.generate_text("hello"),
+            TextGenerationResult(
+                text="Privet from Gemini",
+                input_tokens=9,
+                output_tokens=4,
+            ),
+        )
 
     def test_claude_provider_extracts_text(self) -> None:
         provider = ClaudeMessagesTextProvider(
@@ -71,6 +94,10 @@ class AIProviderTests(unittest.TestCase):
                 _build_response(
                     "https://api.anthropic.com/v1/messages",
                     {
+                        "usage": {
+                            "input_tokens": 8,
+                            "output_tokens": 3,
+                        },
                         "content": [
                             {
                                 "type": "text",
@@ -82,7 +109,14 @@ class AIProviderTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(provider.generate_text("hello"), "Privet from Claude")
+        self.assertEqual(
+            provider.generate_text("hello"),
+            TextGenerationResult(
+                text="Privet from Claude",
+                input_tokens=8,
+                output_tokens=3,
+            ),
+        )
 
 
 class _MockClient:

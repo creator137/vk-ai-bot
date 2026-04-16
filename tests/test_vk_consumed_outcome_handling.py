@@ -88,6 +88,30 @@ class VkConsumedOutcomeHandlingTests(unittest.TestCase):
             )
         )
 
+    def test_completed_branch_is_handled_explicitly(self) -> None:
+        event = _build_event()
+        outcome = RequestOutcome(
+            status="handled",
+            reason="provider_selected",
+            user_id=1,
+        )
+
+        with patch(
+            "app.vk_transport.service.get_session_factory",
+            return_value=lambda: _SessionScope(),
+        ), patch(
+            "app.vk_transport.service._dispatch_to_application",
+            return_value=outcome,
+        ), patch(
+            "app.vk_transport.service.dispatch_accepted_vk_event",
+        ), patch("app.vk_transport.service.logger.info") as logger_info:
+            returned = ApplicationVkEventHandoff().handle(event)
+
+        self.assertEqual(returned, outcome)
+        self.assertTrue(
+            any("VK event branch completed" in call.args[0] for call in logger_info.call_args_list)
+        )
+
 
 def _build_event() -> NormalizedVkEvent:
     return NormalizedVkEvent(

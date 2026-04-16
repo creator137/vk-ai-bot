@@ -41,6 +41,21 @@ class WorkerProviderSelectionTests(unittest.TestCase):
 
         self.assertEqual(provider.__class__.__name__, "ClaudeMessagesTextProvider")
 
+    def test_builds_openai_provider_when_user_selected_chatgpt(self) -> None:
+        settings = Settings(
+            ai_provider="claude",
+            openai_api_key="openai-key",
+            openai_model="gpt-5-mini",
+        )
+
+        provider = _build_text_provider(
+            settings,
+            peer_id=321,
+            provider_code="openai",
+        )
+
+        self.assertEqual(provider.__class__.__name__, "OpenAIResponsesTextProvider")
+
     def test_returns_none_when_selected_provider_key_is_missing(self) -> None:
         settings = Settings(ai_provider="gemini", gemini_api_key=None)
 

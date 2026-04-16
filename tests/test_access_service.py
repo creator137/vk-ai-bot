@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from app.access.models import AccessGrant
 from app.access.service import AccessService
 from app.db.base import Base
+from app.subscriptions.service import SubscriptionService
 from app.users.service import UserService
 
 
@@ -31,7 +32,7 @@ class AccessServiceTests(unittest.TestCase):
         Base.metadata.drop_all(self.engine)
         self.engine.dispose()
 
-    def test_access_denied_when_no_grant_exists(self) -> None:
+    def test_access_denied_when_no_grant_or_subscription_exists(self) -> None:
         with self.session_factory() as session:
             user = UserService(session).find_or_create_by_vk_user_id(123456)
             service = AccessService(session=session)
@@ -39,7 +40,7 @@ class AccessServiceTests(unittest.TestCase):
             decision = service.decide_for_user_id(user.id)
 
         self.assertFalse(decision.allowed)
-        self.assertEqual(decision.reason, "grant_missing")
+        self.assertEqual(decision.reason, "subscription_missing")
 
     def test_access_allowed_when_grant_exists(self) -> None:
         with self.session_factory() as session:
@@ -52,6 +53,20 @@ class AccessServiceTests(unittest.TestCase):
 
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.reason, "grant_present")
+
+    def test_access_allowed_when_active_subscription_exists(self) -> None:
+        with self.session_factory() as session:
+            user = UserService(session).find_or_create_by_vk_user_id(123456)
+            SubscriptionService(session=session).issue_for_user_id(
+                user_id=user.id,
+                plan_code="lite",
+            )
+            service = AccessService(session=session)
+
+            decision = service.decide_for_user_id(user.id)
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.reason, "subscription_active")
 
     def test_access_grant_enforces_single_grant_per_user(self) -> None:
         with self.session_factory() as session:

@@ -34,6 +34,9 @@ class AcceptedRequestPersistenceServiceTests(unittest.TestCase):
                 peer_id=321,
                 request_text="hello",
                 response_text="AI reply",
+                input_tokens=10,
+                output_tokens=6,
+                total_tokens=16,
             )
 
             stored = session.scalar(select(AcceptedRequestRecord))
@@ -43,7 +46,13 @@ class AcceptedRequestPersistenceServiceTests(unittest.TestCase):
         self.assertEqual(recorded.peer_id, 321)
         self.assertEqual(recorded.request_text, "hello")
         self.assertEqual(recorded.response_text, "AI reply")
+        self.assertEqual(recorded.input_tokens, 10)
+        self.assertEqual(recorded.output_tokens, 6)
+        self.assertEqual(recorded.total_tokens, 16)
         self.assertEqual(stored.user_id, user_id)
         self.assertEqual(stored.peer_id, 321)
         self.assertEqual(stored.request_text, "hello")
         self.assertEqual(stored.response_text, "AI reply")
+        self.assertEqual(stored.input_tokens, 10)
+        self.assertEqual(stored.output_tokens, 6)
+        self.assertEqual(stored.total_tokens, 16)

@@ -78,6 +78,16 @@ def _handle_consumed_outcome(
         )
         return
 
+    if consumption.state == "completed":
+        logger.info(
+            "VK event branch completed: type=%s event_id=%s reason=%s user_id=%s",
+            event.event_type,
+            event.event_id,
+            outcome.reason,
+            outcome.user_id,
+        )
+        return
+
     logger.info(
         (
             "VK event branch ready for next stage: type=%s event_id=%s "
@@ -94,7 +104,13 @@ def _plan_outward_reaction(
     event: NormalizedVkEvent,
     consumption: OutcomeConsumption,
 ) -> VkOutwardReactionPlan:
-    reaction = plan_vk_outward_reaction(consumption)
+    handled_text = _extract_string(event.payload, "handled_text")
+    handled_view = _extract_string(event.payload, "handled_view")
+    reaction = plan_vk_outward_reaction(
+        consumption,
+        handled_text=handled_text,
+        handled_view=handled_view,
+    )
     if reaction.action == "none":
         logger.info(
             "VK outward reaction not planned: type=%s event_id=%s branch=%s",
@@ -225,6 +241,13 @@ def _extract_int(payload: dict[str, Any], key: str) -> int | None:
 
 def _extract_mapping(value: Any) -> dict[str, Any] | None:
     if isinstance(value, dict):
+        return value
+    return None
+
+
+def _extract_string(payload: dict[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if isinstance(value, str) and value:
         return value
     return None
 

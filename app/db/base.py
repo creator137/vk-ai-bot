@@ -8,4 +8,5 @@ class Base(DeclarativeBase):
 # Import model modules so metadata is populated for migrations and tests.
 from app.access import models as access_models  # noqa: E402,F401
 from app.requests import models as request_models  # noqa: E402,F401
+from app.subscriptions import models as subscription_models  # noqa: E402,F401
 from app.users import models as users_models  # noqa: E402,F401
