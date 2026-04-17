@@ -56,3 +56,50 @@ class AcceptedRequestPersistenceServiceTests(unittest.TestCase):
         self.assertEqual(stored.input_tokens, 10)
         self.assertEqual(stored.output_tokens, 6)
         self.assertEqual(stored.total_tokens, 16)
+
+    def test_lists_recent_dialogue_turns_in_chronological_order(self) -> None:
+        with Session(self.engine) as session:
+            user = User(vk_user_id=123456)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+
+            service = AcceptedRequestPersistenceService(session=session)
+            service.record_text_exchange(
+                user_id=user.id,
+                peer_id=321,
+                request_text="first",
+                response_text="first reply",
+                input_tokens=1,
+                output_tokens=1,
+                total_tokens=2,
+            )
+            service.record_text_exchange(
+                user_id=user.id,
+                peer_id=321,
+                request_text="second",
+                response_text="second reply",
+                input_tokens=1,
+                output_tokens=1,
+                total_tokens=2,
+            )
+            service.record_text_exchange(
+                user_id=user.id,
+                peer_id=321,
+                request_text="third",
+                response_text="third reply",
+                input_tokens=1,
+                output_tokens=1,
+                total_tokens=2,
+            )
+
+            turns = service.list_recent_dialogue_turns(
+                user_id=user.id,
+                peer_id=321,
+                limit=2,
+            )
+
+        self.assertEqual(
+            [(turn.request_text, turn.response_text) for turn in turns],
+            [("second", "second reply"), ("third", "third reply")],
+        )

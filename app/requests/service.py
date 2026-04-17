@@ -20,6 +20,12 @@ class AcceptedTextExchange:
     total_tokens: int
 
 
+@dataclass(frozen=True, slots=True)
+class AcceptedDialogueTurn:
+    request_text: str
+    response_text: str
+
+
 class AcceptedRequestPersistenceService:
     def __init__(
         self,
@@ -52,6 +58,26 @@ class AcceptedRequestPersistenceService:
         self._session.commit()
         self._session.refresh(record)
         return _build_exchange(record)
+
+    def list_recent_dialogue_turns(
+        self,
+        *,
+        user_id: int,
+        peer_id: int,
+        limit: int,
+    ) -> list[AcceptedDialogueTurn]:
+        records = self._repository.list_recent_for_dialog(
+            user_id=user_id,
+            peer_id=peer_id,
+            limit=limit,
+        )
+        return [
+            AcceptedDialogueTurn(
+                request_text=record.request_text,
+                response_text=record.response_text,
+            )
+            for record in records
+        ]
 
 
 def _build_exchange(record: AcceptedRequestRecord) -> AcceptedTextExchange:

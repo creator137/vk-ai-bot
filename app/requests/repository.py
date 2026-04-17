@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.requests.models import AcceptedRequestRecord
@@ -31,3 +32,23 @@ class AcceptedRequestRecordRepository:
         )
         self._session.add(record)
         return record
+
+    def list_recent_for_dialog(
+        self,
+        *,
+        user_id: int,
+        peer_id: int,
+        limit: int,
+    ) -> list[AcceptedRequestRecord]:
+        statement = (
+            select(AcceptedRequestRecord)
+            .where(
+                AcceptedRequestRecord.user_id == user_id,
+                AcceptedRequestRecord.peer_id == peer_id,
+            )
+            .order_by(AcceptedRequestRecord.id.desc())
+            .limit(limit)
+        )
+        records = list(self._session.scalars(statement))
+        records.reverse()
+        return records

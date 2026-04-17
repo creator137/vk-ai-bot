@@ -18,7 +18,7 @@ from app.ai.provider import (
 from app.ai.provider_catalog import get_provider_option
 from app.core.config import get_settings
 from app.db.session import get_session_factory
-from app.requests.service import AcceptedRequestPersistenceService
+from app.requests.service import AcceptedDialogueTurn, AcceptedRequestPersistenceService
 from app.subscriptions.service import SubscriptionService
 from app.users.service import UserService
 from app.vk_transport.delivery import deliver_planned_vk_reaction
@@ -28,6 +28,7 @@ from app.vk_transport.schemas import NormalizedVkEvent
 from app.vk_transport.vk_api import VkApiError, VkMessagesApi
 
 logger = logging.getLogger(__name__)
+MAX_CONTEXT_TURNS = 6
 
 
 @dramatiq.actor(queue_name="accepted_requests")
@@ -82,11 +83,22 @@ def run_accepted_vk_text_request(
     messages_api: VkMessagesApi,
     persist_exchange: Callable[..., None],
     consume_user_tokens: Callable[..., None] | None = None,
+    load_dialogue_context: Callable[..., list[AcceptedDialogueTurn]] | None = None,
 ) -> None:
     if consume_user_tokens is None:
         consume_user_tokens = _consume_user_tokens
-
-    result = provider.generate_text(text)
+    if load_dialogue_context is None:
+        load_dialogue_context = _load_dialogue_context
+    context_turns = load_dialogue_context(
+        user_id=user_id,
+        peer_id=peer_id,
+        limit=MAX_CONTEXT_TURNS,
+    )
+    prompt = _build_contextual_prompt(
+        current_text=text,
+        context_turns=context_turns,
+    )
+    result = provider.generate_text(prompt)
     persist_exchange(
         user_id=user_id,
         peer_id=peer_id,
@@ -189,6 +201,22 @@ def _persist_accepted_text_exchange(
         )
 
 
+def _load_dialogue_context(
+    *,
+    user_id: int,
+    peer_id: int,
+    limit: int,
+) -> list[AcceptedDialogueTurn]:
+    session_factory = get_session_factory()
+    with session_factory() as session:
+        service = AcceptedRequestPersistenceService(session=session)
+        return service.list_recent_dialogue_turns(
+            user_id=user_id,
+            peer_id=peer_id,
+            limit=limit,
+        )
+
+
 def _consume_user_tokens(*, user_id: int, total_tokens: int) -> None:
     session_factory = get_session_factory()
     with session_factory() as session:
@@ -206,3 +234,29 @@ def _build_reply_event(*, peer_id: int, text: str) -> NormalizedVkEvent:
         peer_id=peer_id,
         payload={"message": {"text": text}},
     )
+
+
+def _build_contextual_prompt(
+    *,
+    current_text: str,
+    context_turns: list[AcceptedDialogueTurn],
+) -> str:
+    if not context_turns:
+        return current_text
+
+    lines = [
+        "Продолжай диалог, учитывая предыдущие сообщения.",
+        "Краткая история переписки:",
+    ]
+    for turn in context_turns:
+        lines.append(f"Пользователь: {turn.request_text}")
+        lines.append(f"Бот: {turn.response_text}")
+
+    lines.extend(
+        [
+            "",
+            "Новое сообщение пользователя:",
+            current_text,
+        ]
+    )
+    return "\n".join(lines)
