@@ -2,11 +2,11 @@
 
 ## Project state
 
-Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, minimal VK outward delivery slice, minimal AI bootstrap for accepted path, minimal accepted request persistence slice, and minimal subscription/token accounting slice implemented.
+Foundation bootstrap, minimal VK transport bootstrap, minimal users bootstrap, VK-to-users handoff, minimal access decision boundary, minimal request outcome slice, minimal outcome consumer slice, minimal denied/accepted branch handling, minimal outward reaction slice, minimal access grant issuance slice, minimal VK outward delivery slice, minimal AI bootstrap for accepted path, minimal accepted request persistence slice, minimal subscription/token accounting slice, minimal dialogue memory slice, and minimal Robokassa payment bootstrap implemented.
 
 ## Current phase
 
-First minimal subscription token accounting slice ready. Repository prepared for rollout and verification before any payment or broader context work.
+First minimal Robokassa payment bootstrap ready. Repository prepared for rollout and verification of payment initiation plus callback confirmation.
 
 ## Completed
 
@@ -116,6 +116,19 @@ First minimal subscription token accounting slice ready. Repository prepared for
 - Accepted worker now persists input/output/total token usage for each accepted text exchange
 - Accepted worker now deducts tokens from active subscriptions by factual input + output usage
 - Subscription tests added
+- Minimal accepted dialogue memory added:
+  - recent accepted request/response pairs are now reused as short dialogue context
+  - accepted worker now sends recent dialogue history to the AI provider before the new user message
+- Minimal Robokassa payment bootstrap added
+- Subscription payment model added
+- Subscription payments migration added
+- Internal protected Robokassa payment initiation endpoint added
+- Robokassa payment link generation added
+- Robokassa ResultURL callback verification added
+- Robokassa SuccessURL verification added
+- Successful Robokassa ResultURL confirmation now activates the selected subscription automatically
+- Plan preview in VK can now include a Robokassa payment link when payment settings are configured
+- Robokassa tests added
 
 ## Accepted technical direction
 
@@ -139,30 +152,28 @@ First minimal subscription token accounting slice ready. Repository prepared for
 
 ## Next recommended step
 
-Roll out and verify the current subscription-aware accepted path before any broader billing or context step:
+Roll out and verify the current Robokassa-aware payment slice:
 
 1. apply the latest migration on the server
-2. issue test subscriptions through the internal endpoint
-3. verify accepted requests spend factual provider usage
-4. verify denied responses show plans when no active access is present
-5. keep payment collection, attachments, and broader memory out of scope for now
+2. configure `APP_BASE_URL`, `ROBOKASSA_MERCHANT_LOGIN`, `ROBOKASSA_PASSWORD1`, `ROBOKASSA_PASSWORD2`
+3. set `ResultURL`, `SuccessURL`, and `FailURL` in Robokassa technical settings
+4. run at least one test payment and one real payment through Robokassa
+5. confirm `ResultURL` returns `OK{InvId}` and activates the correct subscription
 
 ## Recommended next branch
 
-`feat/subscription-rollout-verification`
+`feat/robokassa-rollout-verification`
 
 ## Recommended next task for AI
 
-Complete rollout and verification of the existing subscription slice:
+Complete rollout and verification of the existing payment slice:
 
-- deploy the latest migration and worker/api code
-- issue subscriptions through the protected internal endpoint
-- confirm accepted requests deduct factual provider usage
-- confirm denied responses show plans when access is absent
-- do not add payment collection yet
-- do not add broader conversation context yet
-
-Then update current status after the rollout is confirmed.
+- deploy the latest migration and api/worker code
+- configure Robokassa credentials and callback URLs
+- confirm internal payment init returns a valid Robokassa payment URL
+- confirm `ResultURL` activates the correct subscription after a paid test invoice
+- confirm VK tariff preview shows payment links when Robokassa is configured
+- keep full billing dashboard, refunds, and recurring payments out of scope for now
 
 ## Notes
 
@@ -185,7 +196,8 @@ Then update current status after the rollout is confirmed.
 - Current accepted AI path supports OpenAI, Gemini, and Claude text providers selected via env
 - Current accepted AI path now persists minimal accepted text request/response pairs plus token usage
 - Current accepted AI path now deducts factual input + output tokens from the user's active subscription
-- Current accepted AI path still does not include automated payments, attachments, or broader conversation memory yet
+- Current accepted AI path now includes short dialogue memory from recent accepted exchanges
+- Current payment path now supports Robokassa payment link generation and callback confirmation
+- Current payment path still does not include a billing cabinet, refunds, or recurring charges yet
 - VK events without actor id are safely ignored by the application handoff
-- Do not mix VK transport with payment collection logic yet
 - Do not expand into a full AI platform yet

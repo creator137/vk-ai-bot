@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.access.service import AccessService
+from app.core.config import Settings
 from app.application.cabinet import CabinetService
 from app.application.vk_events import build_vk_event_application_handler
 from app.db.base import Base
@@ -198,6 +200,7 @@ class CabinetTests(unittest.TestCase):
         self.assertEqual(outcome.reason, "plan_preview_shown")
         self.assertIn("🚀 Pro", event.payload["handled_text"])
         self.assertIn("599₽ в месяц", event.payload["handled_text"])
+        self.assertIn("Оплата будет доступна", event.payload["handled_text"])
 
     def test_plan_button_payload_opens_plan_preview(self) -> None:
         event = NormalizedVkEvent(
@@ -223,3 +226,34 @@ class CabinetTests(unittest.TestCase):
         self.assertEqual(outcome.status, "handled")
         self.assertEqual(outcome.reason, "plan_preview_shown")
         self.assertIn("🚀 Pro", event.payload["handled_text"])
+
+    def test_plan_preview_contains_payment_link_when_robokassa_is_configured(self) -> None:
+        event = NormalizedVkEvent(
+            event_type="message_new",
+            group_id=1,
+            event_id="evt-cabinet-6",
+            actor_id=123456,
+            peer_id=321,
+            occurred_at=1710000000,
+            payload={"message": {"text": "🚀 Pro"}},
+        )
+
+        with patch(
+            "app.application.vk_events.get_settings",
+            return_value=Settings(
+                app_base_url="https://vegagpt.ru",
+                robokassa_merchant_login="demo",
+                robokassa_password1="pass1",
+                robokassa_password2="pass2",
+                robokassa_test_mode=True,
+            ),
+        ):
+            with self.session_factory() as session:
+                UserService(session).find_or_create_by_vk_user_id(123456)
+                handler = build_vk_event_application_handler(session)
+                outcome = handler.handle(event)
+
+        self.assertEqual(outcome.status, "handled")
+        self.assertEqual(outcome.reason, "plan_preview_shown")
+        self.assertIn("Ссылка на оплату:", event.payload["handled_text"])
+        self.assertIn("auth.robokassa.ru", event.payload["handled_text"])

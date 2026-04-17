@@ -9,8 +9,11 @@ from sqlalchemy.orm import Session
 from app.access.repository import AccessGrantRepository
 from app.access.service import AccessDecision, AccessService
 from app.application.cabinet import CabinetService
+from app.application.payments import RobokassaPaymentInitHandler, build_robokassa_payment_init_handler
 from app.application.provider_selection import ProviderSelectionService
 from app.application.request_outcomes import RequestOutcome
+from app.core.config import get_settings
+from app.payments.robokassa import RobokassaError
 from app.subscriptions.service import SubscriptionService
 from app.users.service import UserService
 from app.vk_transport.schemas import NormalizedVkEvent
@@ -25,11 +28,13 @@ class VkEventApplicationHandler:
         access_service: AccessService,
         provider_selection_service: ProviderSelectionService,
         cabinet_service: CabinetService,
+        payment_init_handler: RobokassaPaymentInitHandler,
     ) -> None:
         self._user_service = user_service
         self._access_service = access_service
         self._provider_selection_service = provider_selection_service
         self._cabinet_service = cabinet_service
+        self._payment_init_handler = payment_init_handler
 
     def handle(self, event: NormalizedVkEvent) -> RequestOutcome:
         if event.actor_id is None:
@@ -123,8 +128,23 @@ class VkEventApplicationHandler:
         if not isinstance(plan_code, str):
             plan_code = self._cabinet_service.get_plan_code_from_text(message_text)
         if plan_code is not None:
+            payment_url = None
+            is_test_payment = False
+            try:
+                payment = self._payment_init_handler.create_for_vk_user_id(
+                    vk_user_id=user.vk_user_id,
+                    plan_code=plan_code,
+                )
+            except RobokassaError:
+                payment = None
+            else:
+                payment_url = payment.payment_url
+                is_test_payment = payment.is_test
+
             event.payload["handled_text"] = self._cabinet_service.build_plan_detail_text(
                 plan_code=plan_code,
+                payment_url=payment_url,
+                is_test=is_test_payment,
             )
             event.payload["handled_view"] = "plans"
             outcome = RequestOutcome(
@@ -178,10 +198,12 @@ def _map_access_decision_to_outcome(
 
 
 def build_vk_event_application_handler(session: Session) -> VkEventApplicationHandler:
+    settings = get_settings()
     user_service = UserService(session=session)
     access_repository = AccessGrantRepository(session)
     subscription_service = SubscriptionService(session=session)
     provider_selection_service = ProviderSelectionService(user_service=user_service)
+    payment_init_handler = build_robokassa_payment_init_handler(session, settings)
     cabinet_service = CabinetService(
         user_service=user_service,
         access_repository=access_repository,
@@ -196,6 +218,7 @@ def build_vk_event_application_handler(session: Session) -> VkEventApplicationHa
         access_service=access_service,
         provider_selection_service=provider_selection_service,
         cabinet_service=cabinet_service,
+        payment_init_handler=payment_init_handler,
     )
 
 

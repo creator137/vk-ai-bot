@@ -121,8 +121,18 @@ class CabinetService:
             return None
         return plan.code
 
-    def build_plan_detail_text(self, *, plan_code: str) -> str:
-        return render_subscription_plan_detail_text(plan_code)
+    def build_plan_detail_text(
+        self,
+        *,
+        plan_code: str,
+        payment_url: str | None = None,
+        is_test: bool = False,
+    ) -> str:
+        return render_subscription_plan_detail_text(
+            plan_code,
+            payment_url=payment_url,
+            is_test=is_test,
+        )
 
     def get_snapshot(self, *, user_id: int) -> CabinetSnapshot:
         user = self._user_service.get_by_id(user_id)

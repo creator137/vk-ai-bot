@@ -90,7 +90,12 @@ def render_subscription_plans_text() -> str:
     return "\n".join(lines)
 
 
-def render_subscription_plan_detail_text(plan_code: str) -> str:
+def render_subscription_plan_detail_text(
+    plan_code: str,
+    *,
+    payment_url: str | None = None,
+    is_test: bool = False,
+) -> str:
     plan = get_subscription_plan(plan_code)
     lines = [
         "AI BOT",
@@ -113,7 +118,25 @@ def render_subscription_plan_detail_text(plan_code: str) -> str:
     lines.extend(
         [
             "",
-            "Если захотите подключить тариф, напишите нам и активируем доступ.",
+        ]
+    )
+
+    if payment_url:
+        lines.extend(
+            [
+                "Ссылка на оплату:",
+                payment_url,
+            ]
+        )
+        if is_test:
+            lines.append("Тестовый режим оплаты включён.")
+    else:
+        lines.append("Оплата будет доступна после настройки платёжного кабинета.")
+
+    lines.extend(
+        [
+            "",
+            "После подтверждения оплаты тариф активируется автоматически.",
         ]
     )
     return "\n".join(lines)
