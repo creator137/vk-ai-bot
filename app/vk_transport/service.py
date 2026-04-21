@@ -106,10 +106,14 @@ def _plan_outward_reaction(
 ) -> VkOutwardReactionPlan:
     handled_text = _extract_string(event.payload, "handled_text")
     handled_view = _extract_string(event.payload, "handled_view")
+    handled_payment_url = _extract_string(event.payload, "handled_payment_url")
+    handled_image_path = _extract_string(event.payload, "handled_image_path")
     reaction = plan_vk_outward_reaction(
         consumption,
         handled_text=handled_text,
         handled_view=handled_view,
+        handled_payment_url=handled_payment_url,
+        handled_image_path=handled_image_path,
     )
     if reaction.action == "none":
         logger.info(

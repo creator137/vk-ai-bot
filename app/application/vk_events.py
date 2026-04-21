@@ -107,6 +107,40 @@ class VkEventApplicationHandler:
             )
             return outcome
 
+        if button_action.get("type") == "instruction_open" or self._cabinet_service.should_show_instruction_for_text(message_text):
+            event.payload["handled_text"] = self._cabinet_service.build_instruction_text()
+            event.payload["handled_view"] = "cabinet"
+            outcome = RequestOutcome(
+                status="handled",
+                reason="instruction_shown",
+                user_id=user.id,
+            )
+            logger.info(
+                "VK instruction shown: type=%s event_id=%s user_id=%s vk_user_id=%s",
+                event.event_type,
+                event.event_id,
+                user.id,
+                user.vk_user_id,
+            )
+            return outcome
+
+        if button_action.get("type") == "support_open" or self._cabinet_service.should_show_support_for_text(message_text):
+            event.payload["handled_text"] = self._cabinet_service.build_support_text()
+            event.payload["handled_view"] = "cabinet"
+            outcome = RequestOutcome(
+                status="handled",
+                reason="support_shown",
+                user_id=user.id,
+            )
+            logger.info(
+                "VK support shown: type=%s event_id=%s user_id=%s vk_user_id=%s",
+                event.event_type,
+                event.event_id,
+                user.id,
+                user.vk_user_id,
+            )
+            return outcome
+
         if button_action.get("type") == "plans_open" or self._cabinet_service.should_show_plans_for_text(message_text):
             event.payload["handled_text"] = self._cabinet_service.build_plans_text()
             event.payload["handled_view"] = "plans"
@@ -146,7 +180,12 @@ class VkEventApplicationHandler:
                 payment_url=payment_url,
                 is_test=is_test_payment,
             )
-            event.payload["handled_view"] = "plans"
+            event.payload["handled_view"] = "plan_detail"
+            event.payload["handled_image_path"] = self._cabinet_service.get_plan_image_path(
+                plan_code=plan_code,
+            )
+            if payment_url:
+                event.payload["handled_payment_url"] = payment_url
             outcome = RequestOutcome(
                 status="handled",
                 reason="plan_preview_shown",

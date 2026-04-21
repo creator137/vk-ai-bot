@@ -38,6 +38,7 @@ def deliver_planned_vk_reaction(
         peer_id=event.peer_id,
         text=reaction.text,
         keyboard=reaction.keyboard,
+        image_path=reaction.image_path,
     )
     logger.info(
         (

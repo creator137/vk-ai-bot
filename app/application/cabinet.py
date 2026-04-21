@@ -8,6 +8,7 @@ from app.ai.provider_catalog import get_provider_option
 from app.subscriptions.catalog import (
     find_subscription_plan_by_button_text,
     get_subscription_plan,
+    get_subscription_plan_image_path,
     render_subscription_plan_detail_text,
     render_subscription_plans_text,
 )
@@ -55,52 +56,76 @@ class CabinetService:
 
     def build_text_for_user_id(self, *, user_id: int) -> str:
         snapshot = self.get_snapshot(user_id=user_id)
-        access_text = "Активен" if snapshot.access_active else "Не активирован"
+        status_icon = "🟩" if snapshot.access_active else "🟥"
+        plan_title = snapshot.plan_title or "Free"
+        remaining_text = _format_token_value(snapshot.remaining_tokens)
         lines = [
             "AI BOT",
             "",
-            "✨ Личный кабинет",
-            "Умный помощник для идей, ответов и работы прямо в сообщениях VK.",
+            f"{status_icon} Ваш ID: {snapshot.vk_user_id}",
             "",
-            "Профиль",
-            f"• ID: {snapshot.vk_user_id}",
-            f"• Доступ: {access_text}",
-            f"• Активная модель: {snapshot.provider_title}",
+            f"💎 Подписка: {plan_title}",
+            f"🔹 Баланс: {remaining_text} токенов",
+            f"🤖 Активный ИИ: {snapshot.provider_title}",
+            "",
+            "🚀 Что умеет ИИ:",
+            "– Ответы на вопросы",
+            "– Решение задач по фото",
+            "– Помощь с текстами",
+            "",
+            "💎 Открой полный доступ:",
+            "✔️ Больше ответов без ограничений",
+            "✔️ Быстрая обработка без ожидания",
+            "✔️ Дополнительные функции",
         ]
 
-        if snapshot.plan_title is None:
-            lines.extend(
-                [
-                    "• Тариф: Free",
-                    "",
-                    "Баланс",
-                    "• Лимит пока не подключён",
-                    "• После активации появится личный запас для общения",
-                    "",
-                    "Что можно сделать",
-                    "• выбрать удобную нейросеть",
-                    "• открыть тарифы",
-                    "• активировать доступ и начать диалог",
-                ]
-            )
-        else:
+        if snapshot.plan_title is not None:
             lines.extend(
                 [
                     "",
-                    "Баланс",
-                    f"• Тариф: {snapshot.plan_title}",
-                    "• Осталось: "
-                    f"{_format_token_value(snapshot.remaining_tokens)} из "
-                    f"{_format_token_value(snapshot.included_tokens)}",
-                    "• Баланс зависит от объёма переписки",
-                    "",
-                    "Что можно сделать",
-                    "• продолжить диалог с выбранной моделью",
-                    "• переключиться на другую нейросеть",
-                    "• открыть тарифы и сравнить планы",
+                    f"📦 Лимит тарифа: {_format_token_value(snapshot.included_tokens)} токенов",
+                    f"✍️ Уже использовано: {_format_token_value(snapshot.used_tokens)}",
                 ]
             )
+
         return "\n".join(lines)
+
+    def build_instruction_text(self) -> str:
+        return "\n".join(
+            [
+                "📘 Инструкция",
+                "",
+                "Как пользоваться:",
+                "– Вопрос (текст/голос) — просто пиши или отправь голосовое",
+                "– Решить задачу по фото — отправь фото",
+                "",
+                "Поддержка: @zhigunov3",
+            ]
+        )
+
+    def build_support_text(self) -> str:
+        return "\n".join(
+            [
+                "🆘 Поддержка",
+                "",
+                "Если что-то не работает или нужен быстрый ответ, напишите:",
+                "@zhigunov3",
+            ]
+        )
+
+    def should_show_instruction_for_text(self, message_text: str | None) -> bool:
+        if not message_text:
+            return False
+
+        normalized = _normalize_action_text(message_text)
+        return normalized in {"инструкция", "как пользоваться", "help"}
+
+    def should_show_support_for_text(self, message_text: str | None) -> bool:
+        if not message_text:
+            return False
+
+        normalized = _normalize_action_text(message_text)
+        return normalized in {"поддержка", "support"}
 
     def should_show_plans_for_text(self, message_text: str | None) -> bool:
         if not message_text:
@@ -133,6 +158,9 @@ class CabinetService:
             payment_url=payment_url,
             is_test=is_test,
         )
+
+    def get_plan_image_path(self, *, plan_code: str) -> str:
+        return get_subscription_plan_image_path(plan_code)
 
     def get_snapshot(self, *, user_id: int) -> CabinetSnapshot:
         user = self._user_service.get_by_id(user_id)

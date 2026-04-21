@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -11,6 +12,7 @@ class SubscriptionPlan:
     included_tokens: int
     button_text: str
     short_description: str
+    image_filename: str
 
 
 LITE_PLAN = SubscriptionPlan(
@@ -20,6 +22,7 @@ LITE_PLAN = SubscriptionPlan(
     35_000,
     "🌿 Lite",
     "Для старта и спокойного ритма",
+    "lite.jpeg",
 )
 PRO_PLAN = SubscriptionPlan(
     "pro",
@@ -28,6 +31,7 @@ PRO_PLAN = SubscriptionPlan(
     100_000,
     "🚀 Pro",
     "Оптимальный выбор на каждый день",
+    "pro.jpeg",
 )
 MAX_PLAN = SubscriptionPlan(
     "max",
@@ -36,6 +40,7 @@ MAX_PLAN = SubscriptionPlan(
     200_000,
     "👑 Max",
     "Для плотного общения и больших задач",
+    "max.jpeg",
 )
 
 PLANS_BY_CODE = {
@@ -62,30 +67,22 @@ def find_subscription_plan_by_button_text(text: str) -> SubscriptionPlan | None:
     return PLANS_BY_BUTTON_TEXT.get(text.strip().casefold())
 
 
+def get_subscription_plan_image_path(plan_code: str) -> str:
+    plan = get_subscription_plan(plan_code)
+    assets_dir = Path(__file__).resolve().parent.parent / "assets" / "tariffs"
+    return str(assets_dir / plan.image_filename)
+
+
 def render_subscription_plans_text() -> str:
     lines = [
         "AI BOT",
         "",
-        "💎 Тарифы",
-        "Подберите формат под свой ритм общения и объём задач.",
+        "Будущее уже здесь.",
         "",
-        f"{LITE_PLAN.button_text}",
-        f"• {LITE_PLAN.price_rub}₽ в месяц",
-        f"• {LITE_PLAN.included_tokens} в запасе для общения",
-        f"• {LITE_PLAN.short_description}",
+        "💎 Премиум — это:",
+        "ИИ без ограничений, без ожидания и с максимальными возможностями.",
         "",
-        f"{PRO_PLAN.button_text}",
-        f"• {PRO_PLAN.price_rub}₽ в месяц",
-        f"• {PRO_PLAN.included_tokens} для активного общения",
-        f"• {PRO_PLAN.short_description}",
-        "",
-        f"{MAX_PLAN.button_text}",
-        f"• {MAX_PLAN.price_rub}₽ в месяц",
-        f"• {MAX_PLAN.included_tokens} для максимального темпа",
-        f"• {MAX_PLAN.short_description}",
-        "",
-        "Чем короче переписка, тем медленнее расходуется баланс.",
-        "Нажмите на тариф ниже, чтобы посмотреть его подробнее.",
+        "Выбери свой уровень по лучшим ценам👇",
     ]
     return "\n".join(lines)
 
@@ -97,46 +94,63 @@ def render_subscription_plan_detail_text(
     is_test: bool = False,
 ) -> str:
     plan = get_subscription_plan(plan_code)
-    lines = [
-        "AI BOT",
-        "",
-        plan.button_text,
-        f"{plan.price_rub}₽ в месяц",
-        "",
-        "Что входит:",
-        f"• {plan.included_tokens} в запасе для общения",
-        f"• {plan.short_description}",
-    ]
-
     if plan.code == "lite":
-        lines.append("• Подойдёт, если бот нужен для коротких ежедневных задач")
-    elif plan.code == "pro":
-        lines.append("• Самый универсальный вариант для работы и общения")
-    else:
-        lines.append("• Лучший вариант, если бот нужен вам каждый день и помногу")
-
-    lines.extend(
-        [
+        lines = [
+            "💎 Lite — 379₽ (̶1̶5̶0̶0̶)̶",
             "",
+            "🔥35.000 токенов🔥",
+            "",
+            "Для учёбы и повседневных задач",
+            "",
+            "✔️ Быстрые ответы без очереди",
+            "✔️ Работа с текстом и фото",
+            "✔️ Генерация изображений",
+            "",
+            "📦 Хватит для:",
+            "— учебы",
+            "— домашних заданий",
+            "— повседневных вопросов",
         ]
-    )
+    elif plan.code == "pro":
+        lines = [
+            "⭐️ PRO — 599₽ (̶4̶0̶0̶0̶)̶",
+            "🔥 Выбор большинства",
+            "",
+            "🔥100.000 токенов🔥",
+            "",
+            "Для тех, кто пользуется ИИ каждый день",
+            "",
+            "✔️ Всё из Lite + больше возможностей",
+            "✔️ Приоритетные ответы",
+            "✔️ Генерация музыки и изображений",
+            "",
+            "📦 Подходит для:",
+            "— работы",
+            "— контента",
+            "— постоянного использования",
+        ]
+    else:
+        lines = [
+            "👑 Max — 1190₽ (̶9̶0̶0̶0̶)̶",
+            "",
+            "🔥200.000 токенов🔥",
+            "",
+            "Максимум возможностей без компромиссов",
+            "",
+            "✔️ Всё включено",
+            "✔️ Самый быстрый доступ (без очередей)",
+            "✔️ Новые функции раньше всех",
+            "✔️ VIP поддержка",
+            "",
+            "🚀 Для тех, кто хочет максимум",
+        ]
+
+    lines.extend([""])
 
     if payment_url:
-        lines.extend(
-            [
-                "Ссылка на оплату:",
-                payment_url,
-            ]
-        )
-        if is_test:
-            lines.append("Тестовый режим оплаты включён.")
+        lines.append("Нажмите кнопку оплаты ниже, чтобы перейти к оформлению.")
     else:
-        lines.append("Оплата будет доступна после настройки платёжного кабинета.")
+        lines.append("Оплата появится сразу после настройки платёжного кабинета.")
 
-    lines.extend(
-        [
-            "",
-            "После подтверждения оплаты тариф активируется автоматически.",
-        ]
-    )
+    lines.extend(["", "После подтверждения оплаты тариф активируется автоматически."])
     return "\n".join(lines)

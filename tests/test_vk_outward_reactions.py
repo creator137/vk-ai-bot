@@ -9,6 +9,7 @@ from app.vk_transport.outward_reactions import (
 )
 from app.vk_transport.keyboards import (
     build_cabinet_inline_keyboard,
+    build_plan_detail_inline_keyboard,
     build_plans_inline_keyboard,
 )
 
@@ -46,6 +47,31 @@ class VkOutwardReactionsTests(unittest.TestCase):
 
         self.assertEqual(reaction.action, "send_text")
         self.assertEqual(reaction.keyboard, build_plans_inline_keyboard())
+
+    def test_completed_branch_plan_detail_uses_payment_keyboard(self) -> None:
+        reaction = plan_vk_outward_reaction(
+            OutcomeConsumption(state="completed"),
+            handled_text="💎 Lite — 379₽",
+            handled_view="plan_detail",
+            handled_payment_url="https://example.com/pay",
+        )
+
+        self.assertEqual(reaction.action, "send_text")
+        self.assertEqual(
+            reaction.keyboard,
+            build_plan_detail_inline_keyboard("https://example.com/pay"),
+        )
+        self.assertIsNone(reaction.image_path)
+
+    def test_completed_branch_plan_detail_carries_image_path(self) -> None:
+        reaction = plan_vk_outward_reaction(
+            OutcomeConsumption(state="completed"),
+            handled_text="💎 Lite — 379₽",
+            handled_view="plan_detail",
+            handled_image_path="/tmp/lite.jpeg",
+        )
+
+        self.assertEqual(reaction.image_path, "/tmp/lite.jpeg")
 
     def test_ready_for_next_stage_branch_has_no_outward_reaction(self) -> None:
         reaction = plan_vk_outward_reaction(OutcomeConsumption(state="ready_for_next_stage"))

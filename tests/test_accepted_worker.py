@@ -55,6 +55,7 @@ class AcceptedWorkerTests(unittest.TestCase):
             peer_id=321,
             text="AI reply",
             keyboard=build_dialog_menu_keyboard(),
+            image_path=None,
         )
 
     def test_worker_sends_recent_dialogue_history_to_provider(self) -> None:

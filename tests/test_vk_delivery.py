@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from urllib.parse import parse_qs
@@ -44,6 +45,49 @@ class VkMessagesApiTests(unittest.TestCase):
         self.assertIn("keyboard", body)
         self.assertIn("random_id", body)
 
+    def test_send_text_message_uploads_image_and_sets_attachment(self) -> None:
+        requests: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append((request.method, str(request.url)))
+            if str(request.url) == "https://api.vk.com/method/photos.getMessagesUploadServer":
+                return httpx.Response(200, json={"response": {"upload_url": "https://upload.vk.test/messages"}})
+            if str(request.url) == "https://upload.vk.test/messages":
+                return httpx.Response(200, json={"server": 11, "photo": '[{"id":1}]', "hash": "abc"})
+            if str(request.url) == "https://api.vk.com/method/photos.saveMessagesPhoto":
+                return httpx.Response(200, json={"response": [{"owner_id": -10, "id": 55, "access_key": "key"}]})
+            if str(request.url) == "https://api.vk.com/method/messages.send":
+                body = parse_qs(request.content.decode())
+                self.assertEqual(body["attachment"], ["photo-10_55_key"])
+                return httpx.Response(200, json={"response": 1})
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        api = VkMessagesApi(
+            token="test-token",
+            api_version="5.199",
+            client=client,
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".jpeg") as image_file:
+            image_file.write(b"fake-image")
+            image_file.flush()
+            api.send_text_message(
+                peer_id=2000000001,
+                text="Plan",
+                image_path=image_file.name,
+            )
+
+        self.assertEqual(
+            [url for _, url in requests],
+            [
+                "https://api.vk.com/method/photos.getMessagesUploadServer",
+                "https://upload.vk.test/messages",
+                "https://api.vk.com/method/photos.saveMessagesPhoto",
+                "https://api.vk.com/method/messages.send",
+            ],
+        )
+
 
 class VkDeliveryTests(unittest.TestCase):
     def test_none_reaction_does_not_call_adapter(self) -> None:
@@ -70,6 +114,27 @@ class VkDeliveryTests(unittest.TestCase):
             peer_id=321,
             text="Denied",
             keyboard=None,
+            image_path=None,
+        )
+
+    def test_send_text_reaction_with_image_calls_adapter(self) -> None:
+        messages_api = Mock()
+
+        deliver_planned_vk_reaction(
+            _build_event(),
+            VkOutwardReactionPlan(
+                action="send_text",
+                text="Plan",
+                image_path="/tmp/plan.jpeg",
+            ),
+            messages_api=messages_api,
+        )
+
+        messages_api.send_text_message.assert_called_once_with(
+            peer_id=321,
+            text="Plan",
+            keyboard=None,
+            image_path="/tmp/plan.jpeg",
         )
 
     def test_send_text_reaction_without_peer_id_skips_delivery(self) -> None:
