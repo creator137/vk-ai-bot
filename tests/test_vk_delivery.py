@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.parse import parse_qs
+import re
 
 import httpx
 
@@ -45,6 +47,46 @@ class VkMessagesApiTests(unittest.TestCase):
         self.assertIn("keyboard", body)
         self.assertIn("random_id", body)
 
+    def test_send_text_message_splits_long_text_into_multiple_vk_messages(self) -> None:
+        requests: list[dict[str, list[str]]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if str(request.url) != "https://api.vk.com/method/messages.send":
+                raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+            requests.append(parse_qs(request.content.decode()))
+            return httpx.Response(200, json={"response": 1})
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        api = VkMessagesApi(
+            token="test-token",
+            api_version="5.199",
+            client=client,
+        )
+
+        long_text = ("Привет! " * 900).strip()
+
+        api.send_text_message(
+            peer_id=2000000001,
+            text=long_text,
+            keyboard=build_cabinet_inline_keyboard(),
+        )
+
+        self.assertGreater(len(requests), 1)
+        self.assertTrue(all(len(item["message"][0]) <= 3500 for item in requests))
+        self.assertTrue(
+            all(
+                re.match(r"^\[\d+/\d+\]\n", item["message"][0]) is not None
+                for item in requests
+            )
+        )
+        self.assertNotIn("keyboard", requests[0])
+        self.assertIn("keyboard", requests[-1])
+        rebuilt = " ".join(
+            re.sub(r"^\[\d+/\d+\]\n", "", item["message"][0]).strip()
+            for item in requests
+        )
+        self.assertEqual(rebuilt, long_text)
+
     def test_send_text_message_uploads_image_and_sets_attachment(self) -> None:
         requests: list[tuple[str, str]] = []
 
@@ -69,13 +111,13 @@ class VkMessagesApiTests(unittest.TestCase):
             client=client,
         )
 
-        with tempfile.NamedTemporaryFile(suffix=".jpeg") as image_file:
-            image_file.write(b"fake-image")
-            image_file.flush()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "plan.jpeg"
+            image_path.write_bytes(b"fake-image")
             api.send_text_message(
                 peer_id=2000000001,
                 text="Plan",
-                image_path=image_file.name,
+                image_path=str(image_path),
             )
 
         self.assertEqual(

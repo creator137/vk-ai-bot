@@ -7,6 +7,9 @@ from typing import Any
 
 import httpx
 
+MAX_VK_MESSAGE_LENGTH = 3500
+CHUNK_MARKER_RESERVE = 12
+
 
 class VkApiError(RuntimeError):
     """Raised when VK API responds with an error payload."""
@@ -32,33 +35,40 @@ class VkMessagesApi:
         keyboard: dict[str, Any] | None = None,
         image_path: str | None = None,
     ) -> None:
-        payload = {
-            "peer_id": peer_id,
-            "message": text,
-            "random_id": _generate_random_id(),
-            "access_token": self._token,
-            "v": self._api_version,
-        }
-        if keyboard is not None:
-            payload["keyboard"] = json.dumps(keyboard, ensure_ascii=False)
+        chunks = _split_message_text(text)
+        chunks = _add_chunk_markers(chunks)
+        attachment = None
         if image_path is not None:
-            payload["attachment"] = self._upload_message_photo(
+            attachment = self._upload_message_photo(
                 peer_id=peer_id,
                 image_path=image_path,
             )
 
-        response = self._post("https://api.vk.com/method/messages.send", data=payload)
-        response.raise_for_status()
-        body = response.json()
+        for index, chunk in enumerate(chunks):
+            payload = {
+                "peer_id": peer_id,
+                "message": chunk,
+                "random_id": _generate_random_id(),
+                "access_token": self._token,
+                "v": self._api_version,
+            }
+            if keyboard is not None and index == len(chunks) - 1:
+                payload["keyboard"] = json.dumps(keyboard, ensure_ascii=False)
+            if attachment is not None and index == 0:
+                payload["attachment"] = attachment
 
-        if "error" in body:
-            error = body["error"]
-            code = error.get("error_code", "unknown")
-            message = error.get("error_msg", "unknown VK API error")
-            raise VkApiError(f"VK API error {code}: {message}")
+            response = self._post("https://api.vk.com/method/messages.send", data=payload)
+            response.raise_for_status()
+            body = response.json()
 
-        if "response" not in body:
-            raise VkApiError("VK API returned unexpected payload for messages.send")
+            if "error" in body:
+                error = body["error"]
+                code = error.get("error_code", "unknown")
+                message = error.get("error_msg", "unknown VK API error")
+                raise VkApiError(f"VK API error {code}: {message}")
+
+            if "response" not in body:
+                raise VkApiError("VK API returned unexpected payload for messages.send")
 
     def _upload_message_photo(
         self,
@@ -155,6 +165,56 @@ class VkMessagesApi:
 
 def _generate_random_id() -> int:
     return randbelow(2_147_483_647)
+
+
+def _split_message_text(text: str) -> list[str]:
+    normalized = text.strip()
+    if not normalized:
+        return [text]
+    if len(normalized) <= MAX_VK_MESSAGE_LENGTH:
+        return [normalized]
+
+    chunks: list[str] = []
+    remaining = normalized
+    max_chunk_length = MAX_VK_MESSAGE_LENGTH - CHUNK_MARKER_RESERVE
+    while len(remaining) > max_chunk_length:
+        split_at = _find_split_index(remaining, max_chunk_length=max_chunk_length)
+        chunks.append(remaining[:split_at].rstrip())
+        remaining = remaining[split_at:].lstrip()
+
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def _add_chunk_markers(chunks: list[str]) -> list[str]:
+    if len(chunks) <= 1:
+        return chunks
+
+    marked_chunks: list[str] = []
+    total = len(chunks)
+    for index, chunk in enumerate(chunks, start=1):
+        prefix = f"[{index}/{total}]\n"
+        marked_chunks.append(prefix + chunk)
+    return marked_chunks
+
+
+def _find_split_index(text: str, *, max_chunk_length: int) -> int:
+    window = text[: max_chunk_length + 1]
+    candidates = [
+        window.rfind("\n\n"),
+        window.rfind("\n"),
+        window.rfind(". "),
+        window.rfind("! "),
+        window.rfind("? "),
+        window.rfind(" "),
+    ]
+    best = max(candidates)
+    if best <= 0:
+        return max_chunk_length
+    if window[best : best + 2] in {". ", "! ", "? "}:
+        return best + 1
+    return best
 
 
 def _unwrap_vk_response(body: dict[str, Any], *, method_name: str) -> Any:

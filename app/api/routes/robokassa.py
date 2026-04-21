@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+import asyncio
 from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.application.payments import build_robokassa_callback_handler
@@ -13,6 +13,8 @@ from app.db.session import get_db_session
 from app.payments.robokassa import RobokassaError
 
 router = APIRouter(prefix="/payments/robokassa", tags=["robokassa"])
+VK_RETURN_URL = "https://vk.com/im?sel=-237587343"
+VK_COMMUNITY_URL = "https://vk.com/club237587343"
 
 
 @router.api_route("/result", methods=["GET", "POST"], response_class=PlainTextResponse)
@@ -41,20 +43,17 @@ async def robokassa_result(
             if "not configured" in str(error).casefold()
             else status.HTTP_400_BAD_REQUEST
         )
-        raise HTTPException(
-            status_code=status_code,
-            detail=str(error),
-        ) from error
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
 
     return PlainTextResponse(f"OK{invoice_id}")
 
 
-@router.api_route("/success", methods=["GET", "POST"], response_class=PlainTextResponse)
+@router.api_route("/success", methods=["GET", "POST"], response_class=HTMLResponse)
 async def robokassa_success(
     request: Request,
     session: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
-) -> PlainTextResponse:
+) -> HTMLResponse:
     payload = await _extract_request_payload(request)
     invoice_id = _require_int(payload, "InvId")
     out_sum = _require_string(payload, "OutSum")
@@ -75,20 +74,65 @@ async def robokassa_success(
             if "not configured" in str(error).casefold()
             else status.HTTP_400_BAD_REQUEST
         )
-        raise HTTPException(
-            status_code=status_code,
-            detail=str(error),
-        ) from error
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
 
-    if result.status == "paid":
-        return PlainTextResponse("Платёж подтверждён. Подписка активирована.")
+    payment_status = result.status
+    if payment_status != "paid":
+        payment_status = await _wait_for_paid_status(
+            invoice_id=invoice_id,
+            session=session,
+            settings=settings,
+        )
 
-    return PlainTextResponse("Платёж принят. Ждём серверное подтверждение оплаты.")
+    if payment_status == "paid":
+        return HTMLResponse(
+            _render_payment_page(
+                title="Оплата подтверждена",
+                heading="Подписка активирована",
+                body=(
+                    "Платёж подтверждён. Подписка уже применена, "
+                    "можно возвращаться в VK и продолжать работу."
+                ),
+                tone="success",
+                primary_button_label="Вернуться в VK",
+                primary_button_href=VK_RETURN_URL,
+                secondary_button_label="Открыть сообщество",
+                secondary_button_href=VK_COMMUNITY_URL,
+            )
+        )
+
+    return HTMLResponse(
+        _render_payment_page(
+            title="Оплата обрабатывается",
+            heading="Платёж принят",
+            body=(
+                "Мы получили платёж, но финальное серверное подтверждение "
+                "ещё в пути. Обычно это занимает несколько секунд."
+            ),
+            tone="pending",
+            auto_refresh_seconds=3,
+            primary_button_label="Вернуться в VK",
+            primary_button_href=VK_RETURN_URL,
+            secondary_button_label="Открыть сообщество",
+            secondary_button_href=VK_COMMUNITY_URL,
+        )
+    )
 
 
-@router.api_route("/fail", methods=["GET", "POST"], response_class=PlainTextResponse)
-async def robokassa_fail() -> PlainTextResponse:
-    return PlainTextResponse("Оплата не завершена. Можно попробовать ещё раз.")
+@router.api_route("/fail", methods=["GET", "POST"], response_class=HTMLResponse)
+async def robokassa_fail() -> HTMLResponse:
+    return HTMLResponse(
+        _render_payment_page(
+            title="Оплата не завершена",
+            heading="Платёж не завершён",
+            body="Оплату можно попробовать ещё раз, когда будете готовы.",
+            tone="fail",
+            primary_button_label="Вернуться в VK",
+            primary_button_href=VK_RETURN_URL,
+            secondary_button_label="Открыть сообщество",
+            secondary_button_href=VK_COMMUNITY_URL,
+        )
+    )
 
 
 async def _extract_request_payload(request: Request) -> dict[str, str]:
@@ -126,3 +170,118 @@ def _extract_shp_params(payload: dict[str, str]) -> dict[str, str]:
         for key, value in payload.items()
         if key.startswith("Shp_")
     }
+
+
+async def _wait_for_paid_status(
+    *,
+    invoice_id: int,
+    session: Session,
+    settings: Settings,
+    attempts: int = 6,
+    delay_seconds: float = 0.5,
+) -> str | None:
+    status_value = None
+    for attempt in range(attempts):
+        handler = build_robokassa_callback_handler(session, settings)
+        status_value = handler.get_payment_status(payment_id=invoice_id)
+        if status_value == "paid":
+            return status_value
+        if attempt < attempts - 1:
+            await asyncio.sleep(delay_seconds)
+            session.expire_all()
+    return status_value
+
+
+def _render_payment_page(
+    *,
+    title: str,
+    heading: str,
+    body: str,
+    tone: str,
+    auto_refresh_seconds: int | None = None,
+    primary_button_label: str | None = None,
+    primary_button_href: str | None = None,
+    secondary_button_label: str | None = None,
+    secondary_button_href: str | None = None,
+) -> str:
+    palette = {
+        "success": ("#0f5132", "#d1e7dd", "#f3fbf6", "#2787f5"),
+        "pending": ("#7a4b00", "#ffe7b8", "#fff7e8", "#2787f5"),
+        "fail": ("#842029", "#f5c2c7", "#fff1f2", "#2787f5"),
+    }
+    text_color, border_color, panel_color, accent_color = palette[tone]
+    refresh_tag = ""
+    refresh_note = ""
+    if auto_refresh_seconds is not None:
+        refresh_tag = f'<meta http-equiv="refresh" content="{auto_refresh_seconds}">'
+        refresh_note = (
+            "<p class=\"hint\">"
+            "Если статус уже обновился, страница сама перезагрузится."
+            "</p>"
+        )
+    actions = ""
+    if primary_button_label and primary_button_href:
+        actions += (
+            "<div class=\"actions\">"
+            f"<a class=\"button button-primary\" href=\"{primary_button_href}\">{primary_button_label}</a>"
+        )
+        if secondary_button_label and secondary_button_href:
+            actions += (
+                f"<a class=\"button button-secondary\" href=\"{secondary_button_href}\">{secondary_button_label}</a>"
+            )
+        actions += "</div>"
+
+    return (
+        "<!doctype html>"
+        "<html lang=\"ru\">"
+        "<head>"
+        "<meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        f"{refresh_tag}"
+        f"<title>{title}</title>"
+        "<style>"
+        "body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#f4f7fb 0%,#eef3f8 100%);color:#1f1f1f;}"
+        ".wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}"
+        ".card{max-width:560px;width:100%;background:"
+        f"{panel_color};border:1px solid {border_color};border-radius:28px;padding:32px;"
+        "box-shadow:0 24px 60px rgba(34,47,62,.12);overflow:hidden;position:relative;}"
+        ".card:before{content:'';position:absolute;inset:0 auto auto 0;width:100%;height:6px;background:linear-gradient(90deg,#2787f5 0%,#59a7ff 55%,#ffb347 100%);}"
+        ".brand{display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-top:10px;}"
+        ".brand-badge{width:48px;height:48px;border-radius:16px;background:linear-gradient(135deg,#2787f5 0%,#5aa9ff 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:700;box-shadow:0 10px 24px rgba(39,135,245,.28);}"
+        ".brand-copy{display:flex;flex-direction:column;gap:2px;}"
+        ".brand-title{font-size:15px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#4a5568;}"
+        ".brand-subtitle{font-size:14px;color:#6b7280;}"
+        f".eyebrow{{color:{text_color};font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}}"
+        "h1{margin:12px 0 16px;font-size:34px;line-height:1.05;}"
+        "p{margin:0;font-size:18px;line-height:1.6;max-width:44ch;}"
+        ".actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px;}"
+        ".button{display:inline-flex;align-items:center;justify-content:center;padding:14px 18px;border-radius:14px;text-decoration:none;font-weight:700;font-size:16px;transition:transform .12s ease,box-shadow .12s ease;}"
+        f".button-primary{{background:{accent_color};color:#fff;box-shadow:0 12px 26px rgba(39,135,245,.26);}}"
+        ".button-secondary{background:#fff;color:#1f2937;border:1px solid #d7e0ea;}"
+        ".button:hover{transform:translateY(-1px);}"
+        ".hint{margin-top:16px;font-size:14px;opacity:.72;}"
+        ".footer{margin-top:18px;font-size:13px;color:#6b7280;}"
+        "@media (max-width:640px){.card{padding:24px;border-radius:22px;}h1{font-size:28px;}p{font-size:16px;}.button{width:100%;}}"
+        "</style>"
+        "</head>"
+        "<body>"
+        "<div class=\"wrap\">"
+        "<section class=\"card\">"
+        "<div class=\"brand\">"
+        "<div class=\"brand-badge\">VK</div>"
+        "<div class=\"brand-copy\">"
+        "<div class=\"brand-title\">AI BOT</div>"
+        "<div class=\"brand-subtitle\">Оплата через Robokassa</div>"
+        "</div>"
+        "</div>"
+        f"<div class=\"eyebrow\">{title}</div>"
+        f"<h1>{heading}</h1>"
+        f"<p>{body}</p>"
+        f"{actions}"
+        f"{refresh_note}"
+        "<div class=\"footer\">Если VK не открылся автоматически, можно закрыть эту вкладку и вернуться в диалог вручную.</div>"
+        "</section>"
+        "</div>"
+        "</body>"
+        "</html>"
+    )

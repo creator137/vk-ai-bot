@@ -140,7 +140,78 @@ class RobokassaRoutesTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Ждём серверное подтверждение оплаты", response.text)
+        self.assertIn("Подписка", response.text)
+
+        with self.session_factory() as session:
+            payment = session.execute(select(SubscriptionPayment)).scalar_one()
+            subscription = session.execute(select(UserSubscription)).scalar_one()
+
+        self.assertEqual(payment.status, "paid")
+        self.assertEqual(subscription.plan_code, "lite")
+
+    def test_result_callback_accepts_fallback_password_in_test_mode(self) -> None:
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            app_base_url="https://vegagpt.ru",
+            robokassa_merchant_login="demo",
+            robokassa_password1="prod-pass1",
+            robokassa_password2="prod-pass2",
+            robokassa_password1_test="test-pass1",
+            robokassa_password2_test="test-pass2",
+            robokassa_test_mode=True,
+        )
+
+        with self.session_factory() as session:
+            user = User(vk_user_id=123456)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+
+            payment = SubscriptionPayment(
+                user_id=user.id,
+                plan_code="lite",
+                amount_rub=379,
+                status="pending",
+            )
+            session.add(payment)
+            session.commit()
+            session.refresh(payment)
+            payment_id = payment.id
+
+        builder = RobokassaSignatureBuilder(
+            merchant_login="demo",
+            password1="prod-pass1",
+            password2="prod-pass2",
+            hash_algorithm="md5",
+            test_mode=True,
+        )
+        signature = builder._sign_for_result(  # noqa: SLF001
+            out_sum="379.00",
+            invoice_id=payment_id,
+            shp_params={"Shp_plan": "lite", "Shp_user": "1"},
+        )
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/payments/robokassa/result",
+                data={
+                    "OutSum": "379.00",
+                    "InvId": str(payment_id),
+                    "SignatureValue": signature,
+                    "Shp_plan": "lite",
+                    "Shp_user": "1",
+                    "IsTest": "1",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, f"OK{payment_id}")
+
+        with self.session_factory() as session:
+            payment = session.execute(select(SubscriptionPayment)).scalar_one()
+            subscription = session.execute(select(UserSubscription)).scalar_one()
+
+        self.assertEqual(payment.status, "paid")
+        self.assertEqual(subscription.plan_code, "lite")
 
     def _override_db_session(self) -> Generator[Session, None, None]:
         with self.session_factory() as session:

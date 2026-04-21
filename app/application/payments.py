@@ -75,6 +75,16 @@ class RobokassaCallbackHandler:
             shp_params=shp_params,
         )
 
+    def get_payment_status(
+        self,
+        *,
+        payment_id: int,
+    ) -> str | None:
+        payment = self._service.get_by_id(payment_id)
+        if payment is None:
+            return None
+        return payment.status
+
 
 def build_robokassa_payment_init_handler(
     session: Session,
@@ -100,22 +110,47 @@ def _build_subscription_payment_service(
     settings: Settings,
 ) -> SubscriptionPaymentService:
     robokassa = None
+    robokassa_fallbacks: list[RobokassaSignatureBuilder] = []
+    password1 = settings.robokassa_password1
+    password2 = settings.robokassa_password2
+    if settings.robokassa_test_mode:
+        password1 = settings.robokassa_password1_test or password1
+        password2 = settings.robokassa_password2_test or password2
+
     if (
         settings.robokassa_merchant_login
-        and settings.robokassa_password1
-        and settings.robokassa_password2
+        and password1
+        and password2
     ):
         robokassa = RobokassaSignatureBuilder(
             merchant_login=settings.robokassa_merchant_login,
-            password1=settings.robokassa_password1,
-            password2=settings.robokassa_password2,
+            password1=password1,
+            password2=password2,
             hash_algorithm=settings.robokassa_hash_algorithm,
             test_mode=settings.robokassa_test_mode,
         )
+        if settings.robokassa_test_mode:
+            fallback_password1 = settings.robokassa_password1
+            fallback_password2 = settings.robokassa_password2
+            if (
+                fallback_password1
+                and fallback_password2
+                and (fallback_password1 != password1 or fallback_password2 != password2)
+            ):
+                robokassa_fallbacks.append(
+                    RobokassaSignatureBuilder(
+                        merchant_login=settings.robokassa_merchant_login,
+                        password1=fallback_password1,
+                        password2=fallback_password2,
+                        hash_algorithm=settings.robokassa_hash_algorithm,
+                        test_mode=settings.robokassa_test_mode,
+                    )
+                )
 
     return SubscriptionPaymentService(
         session=session,
         robokassa=robokassa,
+        robokassa_fallbacks=robokassa_fallbacks,
         app_base_url=settings.app_base_url,
     )
 

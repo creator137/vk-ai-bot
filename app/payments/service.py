@@ -49,6 +49,7 @@ class SubscriptionPaymentService:
         user_service: UserService | None = None,
         subscription_service: SubscriptionService | None = None,
         robokassa: RobokassaSignatureBuilder | None = None,
+        robokassa_fallbacks: list[RobokassaSignatureBuilder] | None = None,
         app_base_url: str | None = None,
     ) -> None:
         self._session = session
@@ -56,6 +57,7 @@ class SubscriptionPaymentService:
         self._user_service = user_service or UserService(session=session)
         self._subscription_service = subscription_service or SubscriptionService(session=session)
         self._robokassa = robokassa
+        self._robokassa_fallbacks = robokassa_fallbacks or []
         self._app_base_url = app_base_url.rstrip("/") if app_base_url else None
 
     def create_for_vk_user_id(
@@ -124,23 +126,23 @@ class SubscriptionPaymentService:
             out_sum=out_sum,
             shp_params=shp_params,
         )
-        if not self._robokassa.verify_result_signature(
+        matched_result_builder = self._find_matching_result_builder(
             out_sum=normalize_out_sum(out_sum),
             invoice_id=invoice_id,
             signature_value=signature_value,
             shp_params=shp_params,
-        ):
+        )
+        if matched_result_builder is None:
             raise RobokassaError("Invalid Robokassa result signature")
+        if matched_result_builder is not self._robokassa:
+            logger.warning(
+                "Robokassa result signature accepted by fallback verifier: payment_id=%s user_id=%s",
+                payment.id,
+                payment.user_id,
+            )
 
         if payment.status != "paid":
-            self._subscription_service.issue_for_user_id(
-                user_id=payment.user_id,
-                plan_code=payment.plan_code,
-            )
-            payment.status = "paid"
-            payment.paid_at = datetime.now(timezone.utc)
-            self._session.commit()
-            self._session.refresh(payment)
+            self._activate_paid_payment(payment)
             logger.info(
                 "Robokassa payment confirmed and subscription activated: payment_id=%s user_id=%s plan_code=%s",
                 payment.id,
@@ -173,13 +175,28 @@ class SubscriptionPaymentService:
             out_sum=out_sum,
             shp_params=shp_params,
         )
-        if not self._robokassa.verify_success_signature(
+        matched_success_builder = self._find_matching_success_builder(
             out_sum=normalize_out_sum(out_sum),
             invoice_id=invoice_id,
             signature_value=signature_value,
             shp_params=shp_params,
-        ):
+        )
+        if matched_success_builder is None:
             raise RobokassaError("Invalid Robokassa success signature")
+        if matched_success_builder is not self._robokassa:
+            logger.warning(
+                "Robokassa success signature accepted by fallback verifier: payment_id=%s user_id=%s",
+                payment.id,
+                payment.user_id,
+            )
+        if payment.status != "paid":
+            self._activate_paid_payment(payment)
+            logger.warning(
+                "Robokassa payment activated via success redirect fallback: payment_id=%s user_id=%s plan_code=%s",
+                payment.id,
+                payment.user_id,
+                payment.plan_code,
+            )
 
         logger.info(
             "Robokassa success redirect validated: payment_id=%s user_id=%s status=%s",
@@ -221,6 +238,59 @@ class SubscriptionPaymentService:
         if not self._app_base_url:
             return None
         return f"{self._app_base_url}{path}"
+
+    def _activate_paid_payment(self, payment: SubscriptionPayment) -> None:
+        self._subscription_service.issue_for_user_id(
+            user_id=payment.user_id,
+            plan_code=payment.plan_code,
+        )
+        payment.status = "paid"
+        payment.paid_at = datetime.now(timezone.utc)
+        self._session.commit()
+        self._session.refresh(payment)
+
+    def _find_matching_result_builder(
+        self,
+        *,
+        out_sum: str,
+        invoice_id: int,
+        signature_value: str,
+        shp_params: dict[str, str],
+    ) -> RobokassaSignatureBuilder | None:
+        for builder in self._iter_signature_builders():
+            if builder.verify_result_signature(
+                out_sum=out_sum,
+                invoice_id=invoice_id,
+                signature_value=signature_value,
+                shp_params=shp_params,
+            ):
+                return builder
+        return None
+
+    def _find_matching_success_builder(
+        self,
+        *,
+        out_sum: str,
+        invoice_id: int,
+        signature_value: str,
+        shp_params: dict[str, str],
+    ) -> RobokassaSignatureBuilder | None:
+        for builder in self._iter_signature_builders():
+            if builder.verify_success_signature(
+                out_sum=out_sum,
+                invoice_id=invoice_id,
+                signature_value=signature_value,
+                shp_params=shp_params,
+            ):
+                return builder
+        return None
+
+    def _iter_signature_builders(self) -> list[RobokassaSignatureBuilder]:
+        builders: list[RobokassaSignatureBuilder] = []
+        if self._robokassa is not None:
+            builders.append(self._robokassa)
+        builders.extend(self._robokassa_fallbacks)
+        return builders
 
 
 def _build_init_result(

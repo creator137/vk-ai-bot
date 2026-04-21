@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     claude_api_key: str | None = None
     claude_model: str = "claude-sonnet-4-20250514"
+    claude_max_tokens: int = 1024
     app_base_url: str | None = None
     internal_access_token: str | None = None
     vk_outbound_token: str | None = None
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
     robokassa_merchant_login: str | None = None
     robokassa_password1: str | None = None
     robokassa_password2: str | None = None
+    robokassa_password1_test: str | None = None
+    robokassa_password2_test: str | None = None
     robokassa_test_mode: bool = False
     robokassa_hash_algorithm: str = "md5"
 

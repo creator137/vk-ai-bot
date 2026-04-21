@@ -23,11 +23,41 @@ class AcceptedDispatchTests(unittest.TestCase):
 
         actor.send.assert_called_once_with(1, 321, "hello")
 
+    def test_photo_message_dispatches_photo_worker_task(self) -> None:
+        event = _build_event(
+            event_type="message_new",
+            payload={
+                "message": {
+                    "text": "",
+                    "attachments": [
+                        {
+                            "type": "photo",
+                            "photo": {
+                                "sizes": [
+                                    {"url": "https://example.com/small.jpg", "width": 100, "height": 50},
+                                    {"url": "https://example.com/large.jpg", "width": 1200, "height": 900},
+                                ]
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+        actor = Mock()
+
+        with patch(
+            "app.application.accepted_dispatch._get_accepted_photo_request_actor",
+            return_value=actor,
+        ):
+            dispatch_accepted_vk_event(event)
+
+        actor.send.assert_called_once_with(1, 321, None, ["https://example.com/large.jpg"])
+
     def test_accepted_non_text_or_non_message_event_does_not_dispatch(self) -> None:
         cases = [
             _build_event(
                 event_type="message_new",
-                payload={"message": {"text": ""}},
+                payload={"message": {"text": "", "attachments": []}},
             ),
             _build_event(
                 event_type="message_allow",
@@ -38,13 +68,18 @@ class AcceptedDispatchTests(unittest.TestCase):
         for event in cases:
             with self.subTest(event_type=event.event_type):
                 actor = Mock()
+                photo_actor = Mock()
                 with patch(
                     "app.application.accepted_dispatch._get_accepted_request_actor",
                     return_value=actor,
+                ), patch(
+                    "app.application.accepted_dispatch._get_accepted_photo_request_actor",
+                    return_value=photo_actor,
                 ):
                     dispatch_accepted_vk_event(event)
 
                 actor.send.assert_not_called()
+                photo_actor.send.assert_not_called()
 
 
 def _build_event(
