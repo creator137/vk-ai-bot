@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,8 @@ from app.payments.robokassa import (
 from app.subscriptions.catalog import get_subscription_plan
 from app.subscriptions.service import SubscriptionService
 from app.users.service import UserService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +88,18 @@ class SubscriptionPaymentService:
         )
         self._session.commit()
         self._session.refresh(payment)
+        logger.info(
+            (
+                "Robokassa payment initialized: payment_id=%s user_id=%s "
+                "vk_user_id=%s plan_code=%s amount_rub=%s test_mode=%s"
+            ),
+            payment.id,
+            payment.user_id,
+            user.vk_user_id,
+            payment.plan_code,
+            payment.amount_rub,
+            self._robokassa.test_mode,
+        )
         return _build_init_result(
             payment=payment,
             vk_user_id=user.vk_user_id,
@@ -126,6 +141,18 @@ class SubscriptionPaymentService:
             payment.paid_at = datetime.now(timezone.utc)
             self._session.commit()
             self._session.refresh(payment)
+            logger.info(
+                "Robokassa payment confirmed and subscription activated: payment_id=%s user_id=%s plan_code=%s",
+                payment.id,
+                payment.user_id,
+                payment.plan_code,
+            )
+        else:
+            logger.info(
+                "Robokassa payment confirmation accepted for already paid invoice: payment_id=%s user_id=%s",
+                payment.id,
+                payment.user_id,
+            )
 
         return _build_confirmation_result(payment)
 
@@ -154,6 +181,12 @@ class SubscriptionPaymentService:
         ):
             raise RobokassaError("Invalid Robokassa success signature")
 
+        logger.info(
+            "Robokassa success redirect validated: payment_id=%s user_id=%s status=%s",
+            payment.id,
+            payment.user_id,
+            payment.status,
+        )
         return _build_confirmation_result(payment)
 
     def get_by_id(self, payment_id: int) -> SubscriptionPayment | None:
