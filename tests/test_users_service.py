@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
+from app.subscriptions.service import SubscriptionService
 from app.users.models import User
 from app.users.repository import UserRepository
 from app.users.service import UserService
@@ -48,6 +49,20 @@ class UsersBootstrapTests(unittest.TestCase):
 
             self.assertEqual(second_user.id, first_user.id)
             self.assertEqual(self._count_users(session), 1)
+
+    def test_find_or_create_issues_starter_tokens_for_existing_user_without_subscription(self) -> None:
+        with self.session_factory() as session:
+            repository = UserRepository(session)
+            repository.create(123456)
+            session.commit()
+
+            user = UserService(session).find_or_create_by_vk_user_id(123456)
+            subscription = SubscriptionService(session).get_subscription(user_id=user.id)
+
+        assert subscription is not None
+        self.assertEqual(subscription.plan_code, "free")
+        self.assertEqual(subscription.included_tokens, 5_000)
+        self.assertEqual(subscription.used_tokens, 0)
 
     def test_repository_create_respects_unique_vk_user_id(self) -> None:
         with self.session_factory() as first_session:

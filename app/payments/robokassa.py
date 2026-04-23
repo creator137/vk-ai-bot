@@ -15,6 +15,7 @@ class RobokassaPaymentLink:
     payment_url: str
     signature_value: str
     out_sum: str
+    payload: dict[str, str]
 
 
 class RobokassaSignatureBuilder:
@@ -60,6 +61,7 @@ class RobokassaSignatureBuilder:
             "InvId": str(invoice_id),
             "Description": description,
             "SignatureValue": signature,
+            "Encoding": "utf-8",
             "Culture": "ru",
         }
         if self._test_mode:
@@ -81,6 +83,7 @@ class RobokassaSignatureBuilder:
             ),
             signature_value=signature,
             out_sum=out_sum,
+            payload=dict(payload),
         )
 
     def verify_result_signature(

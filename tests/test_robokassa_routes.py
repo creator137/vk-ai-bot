@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Generator
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -74,20 +75,25 @@ class RobokassaRoutesTests(unittest.TestCase):
             shp_params={"Shp_plan": "pro", "Shp_user": "1"},
         )
 
-        with TestClient(app) as client:
-            response = client.post(
-                "/payments/robokassa/result",
-                data={
-                    "OutSum": "599.00",
-                    "InvId": str(payment_id),
-                    "SignatureValue": signature,
-                    "Shp_plan": "pro",
-                    "Shp_user": "1",
-                },
-            )
+        with patch("app.application.payments.VkMessagesApi.send_text_message") as send_text_message:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/payments/robokassa/result",
+                    data={
+                        "OutSum": "599.00",
+                        "InvId": str(payment_id),
+                        "SignatureValue": signature,
+                        "Shp_plan": "pro",
+                        "Shp_user": "1",
+                    },
+                )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.text, f"OK{payment_id}")
+        send_text_message.assert_called_once()
+        self.assertEqual(send_text_message.call_args.kwargs["peer_id"], 123456)
+        self.assertIn("Оплата прошла успешно.", send_text_message.call_args.kwargs["text"])
+        self.assertIn("Тариф Pro активирован.", send_text_message.call_args.kwargs["text"])
 
         with self.session_factory() as session:
             payment = session.execute(select(SubscriptionPayment)).scalar_one()
@@ -127,20 +133,24 @@ class RobokassaRoutesTests(unittest.TestCase):
             shp_params={"Shp_plan": "lite", "Shp_user": "1"},
         )
 
-        with TestClient(app) as client:
-            response = client.get(
-                "/payments/robokassa/success",
-                params={
-                    "OutSum": "379.00",
-                    "InvId": str(payment_id),
-                    "SignatureValue": signature,
-                    "Shp_plan": "lite",
-                    "Shp_user": "1",
-                },
-            )
+        with patch("app.application.payments.VkMessagesApi.send_text_message") as send_text_message:
+            with TestClient(app) as client:
+                response = client.get(
+                    "/payments/robokassa/success",
+                    params={
+                        "OutSum": "379.00",
+                        "InvId": str(payment_id),
+                        "SignatureValue": signature,
+                        "Shp_plan": "lite",
+                        "Shp_user": "1",
+                    },
+                )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Подписка", response.text)
+        send_text_message.assert_called_once()
+        self.assertEqual(send_text_message.call_args.kwargs["peer_id"], 123456)
+        self.assertIn("Тариф Lite активирован.", send_text_message.call_args.kwargs["text"])
 
         with self.session_factory() as session:
             payment = session.execute(select(SubscriptionPayment)).scalar_one()

@@ -127,7 +127,8 @@ def build_plan_detail_inline_keyboard(payment_url: str | None = None) -> dict[st
 
 def build_dialog_menu_keyboard() -> dict[str, object]:
     return {
-        "one_time": True,
+        "one_time": False,
+        "inline": True,
         "buttons": [
             [
                 _text_button(

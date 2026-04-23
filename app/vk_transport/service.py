@@ -44,7 +44,7 @@ class ApplicationVkEventHandoff:
         consumption = consume_request_outcome(outcome)
         _handle_consumed_outcome(event, outcome, consumption)
         _dispatch_accepted_event(event, outcome, consumption)
-        reaction = _plan_outward_reaction(event, consumption)
+        reaction = _plan_outward_reaction(event, outcome, consumption)
         _deliver_outward_reaction(event, reaction)
         return outcome
 
@@ -102,6 +102,7 @@ def _handle_consumed_outcome(
 
 def _plan_outward_reaction(
     event: NormalizedVkEvent,
+    outcome: RequestOutcome,
     consumption: OutcomeConsumption,
 ) -> VkOutwardReactionPlan:
     handled_text = _extract_string(event.payload, "handled_text")
@@ -110,6 +111,7 @@ def _plan_outward_reaction(
     handled_image_path = _extract_string(event.payload, "handled_image_path")
     reaction = plan_vk_outward_reaction(
         consumption,
+        outcome_reason=outcome.reason,
         handled_text=handled_text,
         handled_view=handled_view,
         handled_payment_url=handled_payment_url,

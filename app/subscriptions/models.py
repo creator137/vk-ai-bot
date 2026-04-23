@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -22,6 +22,7 @@ class UserSubscription(Base):
     plan_code: Mapped[str] = mapped_column(String(32), nullable=False)
     included_tokens: Mapped[int] = mapped_column(nullable=False)
     used_tokens: Mapped[int] = mapped_column(nullable=False, server_default="0")
+    daily_tokens_last_issued_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

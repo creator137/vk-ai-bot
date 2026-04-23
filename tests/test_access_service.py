@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import unittest
 
 from sqlalchemy import create_engine
@@ -11,6 +12,7 @@ from app.access.models import AccessGrant
 from app.access.service import AccessService
 from app.db.base import Base
 from app.subscriptions.service import SubscriptionService
+from app.users.models import User
 from app.users.service import UserService
 
 
@@ -34,7 +36,9 @@ class AccessServiceTests(unittest.TestCase):
 
     def test_access_denied_when_no_grant_or_subscription_exists(self) -> None:
         with self.session_factory() as session:
-            user = UserService(session).find_or_create_by_vk_user_id(123456)
+            user = User(vk_user_id=123456)
+            session.add(user)
+            session.commit()
             service = AccessService(session=session)
 
             decision = service.decide_for_user_id(user.id)
@@ -57,10 +61,6 @@ class AccessServiceTests(unittest.TestCase):
     def test_access_allowed_when_active_subscription_exists(self) -> None:
         with self.session_factory() as session:
             user = UserService(session).find_or_create_by_vk_user_id(123456)
-            SubscriptionService(session=session).issue_for_user_id(
-                user_id=user.id,
-                plan_code="lite",
-            )
             service = AccessService(session=session)
 
             decision = service.decide_for_user_id(user.id)
@@ -90,3 +90,20 @@ class AccessServiceTests(unittest.TestCase):
 
         self.assertTrue(first_issuance.created)
         self.assertFalse(second_issuance.created)
+
+    def test_access_allowed_after_daily_bonus_when_subscription_is_exhausted(self) -> None:
+        with self.session_factory() as session:
+            user = UserService(session).find_or_create_by_vk_user_id(123456)
+            subscription_service = SubscriptionService(session=session)
+            subscription_service.consume_tokens_if_present(user_id=user.id, total_tokens=5_000)
+            subscription_service.issue_daily_exhausted_bonus_for_user_id(
+                user_id=user.id,
+                current_date=date(2026, 4, 22),
+            )
+            subscription_service.consume_tokens_if_present(user_id=user.id, total_tokens=3_000)
+            service = AccessService(session=session)
+
+            decision = service.decide_for_user_id(user.id)
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.reason, "subscription_active")

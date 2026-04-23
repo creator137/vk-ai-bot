@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     claude_model: str = "claude-sonnet-4-20250514"
     claude_max_tokens: int = 1024
     app_base_url: str | None = None
+    vk_return_url: str | None = None
+    vk_community_url: str | None = None
     internal_access_token: str | None = None
     vk_outbound_token: str | None = None
     vk_api_version: str = "5.199"

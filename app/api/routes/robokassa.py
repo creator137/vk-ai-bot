@@ -1,20 +1,42 @@
 from __future__ import annotations
 
 import asyncio
+from html import escape
 from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
-from app.application.payments import build_robokassa_callback_handler
+from app.application.payments import (
+    build_robokassa_callback_handler,
+    build_robokassa_payment_init_handler,
+)
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
 from app.payments.robokassa import RobokassaError
 
 router = APIRouter(prefix="/payments/robokassa", tags=["robokassa"])
-VK_RETURN_URL = "https://vk.com/im?sel=-237587343"
-VK_COMMUNITY_URL = "https://vk.com/club237587343"
+
+
+@router.get("/start/{payment_id}", response_class=HTMLResponse)
+async def robokassa_start(
+    payment_id: int,
+    session: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    handler = build_robokassa_payment_init_handler(session, settings)
+    try:
+        page = handler.build_checkout_page(payment_id=payment_id)
+    except RobokassaError as error:
+        status_code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if "not configured" in str(error).casefold()
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+    return HTMLResponse(_render_payment_start_page(gateway_url=page.gateway_url, form_fields=page.form_fields))
 
 
 @router.api_route("/result", methods=["GET", "POST"], response_class=PlainTextResponse)
@@ -94,10 +116,9 @@ async def robokassa_success(
                     "можно возвращаться в VK и продолжать работу."
                 ),
                 tone="success",
-                primary_button_label="Вернуться в VK",
-                primary_button_href=VK_RETURN_URL,
-                secondary_button_label="Открыть сообщество",
-                secondary_button_href=VK_COMMUNITY_URL,
+                auto_redirect_seconds=2,
+                auto_redirect_href=settings.vk_return_url,
+                **_build_vk_button_args(settings),
             )
         )
 
@@ -111,26 +132,22 @@ async def robokassa_success(
             ),
             tone="pending",
             auto_refresh_seconds=3,
-            primary_button_label="Вернуться в VK",
-            primary_button_href=VK_RETURN_URL,
-            secondary_button_label="Открыть сообщество",
-            secondary_button_href=VK_COMMUNITY_URL,
+            **_build_vk_button_args(settings),
         )
     )
 
 
 @router.api_route("/fail", methods=["GET", "POST"], response_class=HTMLResponse)
-async def robokassa_fail() -> HTMLResponse:
+async def robokassa_fail(
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
     return HTMLResponse(
         _render_payment_page(
             title="Оплата не завершена",
             heading="Платёж не завершён",
             body="Оплату можно попробовать ещё раз, когда будете готовы.",
             tone="fail",
-            primary_button_label="Вернуться в VK",
-            primary_button_href=VK_RETURN_URL,
-            secondary_button_label="Открыть сообщество",
-            secondary_button_href=VK_COMMUNITY_URL,
+            **_build_vk_button_args(settings),
         )
     )
 
@@ -172,6 +189,17 @@ def _extract_shp_params(payload: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _build_vk_button_args(settings: Settings) -> dict[str, str]:
+    args: dict[str, str] = {}
+    if settings.vk_return_url:
+        args["primary_button_label"] = "Вернуться в VK"
+        args["primary_button_href"] = settings.vk_return_url
+    if settings.vk_community_url:
+        args["secondary_button_label"] = "Открыть сообщество"
+        args["secondary_button_href"] = settings.vk_community_url
+    return args
+
+
 async def _wait_for_paid_status(
     *,
     invoice_id: int,
@@ -199,6 +227,8 @@ def _render_payment_page(
     body: str,
     tone: str,
     auto_refresh_seconds: int | None = None,
+    auto_redirect_seconds: int | None = None,
+    auto_redirect_href: str | None = None,
     primary_button_label: str | None = None,
     primary_button_href: str | None = None,
     secondary_button_label: str | None = None,
@@ -217,6 +247,23 @@ def _render_payment_page(
         refresh_note = (
             "<p class=\"hint\">"
             "Если статус уже обновился, страница сама перезагрузится."
+            "</p>"
+        )
+    redirect_script = ""
+    redirect_note = ""
+    if auto_redirect_seconds is not None and auto_redirect_href:
+        refresh_tag += (
+            f'<meta http-equiv="refresh" content="{auto_redirect_seconds};url={escape(auto_redirect_href, quote=True)}">'
+        )
+        redirect_script = (
+            "<script>"
+            f"window.setTimeout(function () {{ window.location.href = {auto_redirect_href!r}; }}, {auto_redirect_seconds * 1000});"
+            "</script>"
+        )
+        redirect_note = (
+            "<p class=\"hint\">"
+            f"Через {auto_redirect_seconds} сек. вернём вас обратно в VK. "
+            "Если этого не произошло, используйте кнопку ниже."
             "</p>"
         )
     actions = ""
@@ -263,6 +310,7 @@ def _render_payment_page(
         ".footer{margin-top:18px;font-size:13px;color:#6b7280;}"
         "@media (max-width:640px){.card{padding:24px;border-radius:22px;}h1{font-size:28px;}p{font-size:16px;}.button{width:100%;}}"
         "</style>"
+        f"{redirect_script}"
         "</head>"
         "<body>"
         "<div class=\"wrap\">"
@@ -279,9 +327,56 @@ def _render_payment_page(
         f"<p>{body}</p>"
         f"{actions}"
         f"{refresh_note}"
+        f"{redirect_note}"
         "<div class=\"footer\">Если VK не открылся автоматически, можно закрыть эту вкладку и вернуться в диалог вручную.</div>"
         "</section>"
         "</div>"
+        "</body>"
+        "</html>"
+    )
+
+
+def _render_payment_start_page(
+    *,
+    gateway_url: str,
+    form_fields: dict[str, str],
+) -> str:
+    hidden_inputs = "".join(
+        (
+            f'<input type="hidden" name="{escape(key)}" value="{escape(value, quote=True)}">'
+            for key, value in form_fields.items()
+        )
+    )
+    return (
+        "<!doctype html>"
+        "<html lang=\"ru\">"
+        "<head>"
+        "<meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>Переход к оплате</title>"
+        "<style>"
+        "body{margin:0;font-family:Arial,sans-serif;background:#f5f7fb;color:#1f2937;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;}"
+        ".card{max-width:520px;width:100%;background:#fff;border:1px solid #dbe4ee;border-radius:24px;padding:28px;box-shadow:0 24px 60px rgba(34,47,62,.12);}"
+        "h1{margin:0 0 12px;font-size:28px;line-height:1.1;}"
+        "p{margin:0;color:#4b5563;font-size:16px;line-height:1.6;}"
+        ".button{margin-top:20px;display:inline-flex;align-items:center;justify-content:center;padding:14px 18px;border-radius:14px;background:#2787f5;color:#fff;text-decoration:none;border:none;font-weight:700;font-size:16px;cursor:pointer;}"
+        "</style>"
+        "<script>"
+        "window.addEventListener('load', function () {"
+        "  var form = document.getElementById('robokassa-start-form');"
+        "  if (form) { form.submit(); }"
+        "});"
+        "</script>"
+        "</head>"
+        "<body>"
+        "<section class=\"card\">"
+        "<h1>Переход к оплате</h1>"
+        "<p>Открываем защищённую форму Robokassa. Если переадресация не сработала автоматически, нажмите кнопку ниже.</p>"
+        f"<form id=\"robokassa-start-form\" action=\"{escape(gateway_url, quote=True)}\" method=\"post\" accept-charset=\"utf-8\">"
+        f"{hidden_inputs}"
+        "<noscript><button class=\"button\" type=\"submit\">Продолжить оплату</button></noscript>"
+        "</form>"
+        "</section>"
         "</body>"
         "</html>"
     )

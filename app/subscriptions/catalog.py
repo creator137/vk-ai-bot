@@ -15,10 +15,19 @@ class SubscriptionPlan:
     image_filename: str
 
 
+FREE_PLAN = SubscriptionPlan(
+    "free",
+    "Free",
+    0,
+    5_000,
+    "Free",
+    "Стартовый бонус для новых пользователей",
+    "lite.jpeg",
+)
 LITE_PLAN = SubscriptionPlan(
     "lite",
     "Lite",
-    379,
+    300,
     35_000,
     "🌿 Lite",
     "Для старта и спокойного ритма",
@@ -27,7 +36,7 @@ LITE_PLAN = SubscriptionPlan(
 PRO_PLAN = SubscriptionPlan(
     "pro",
     "Pro",
-    599,
+    500,
     100_000,
     "🚀 Pro",
     "Оптимальный выбор на каждый день",
@@ -36,7 +45,7 @@ PRO_PLAN = SubscriptionPlan(
 MAX_PLAN = SubscriptionPlan(
     "max",
     "Max",
-    1_190,
+    1_000,
     200_000,
     "👑 Max",
     "Для плотного общения и больших задач",
@@ -44,6 +53,7 @@ MAX_PLAN = SubscriptionPlan(
 )
 
 PLANS_BY_CODE = {
+    FREE_PLAN.code: FREE_PLAN,
     LITE_PLAN.code: LITE_PLAN,
     PRO_PLAN.code: PRO_PLAN,
     MAX_PLAN.code: MAX_PLAN,
@@ -96,7 +106,7 @@ def render_subscription_plan_detail_text(
     plan = get_subscription_plan(plan_code)
     if plan.code == "lite":
         lines = [
-            "💎 Lite — 379₽ (̶1̶5̶0̶0̶)̶",
+            "💎 Lite — 300₽ (̶1̶5̶0̶0̶)̶",
             "",
             "🔥35.000 токенов🔥",
             "",
@@ -113,7 +123,7 @@ def render_subscription_plan_detail_text(
         ]
     elif plan.code == "pro":
         lines = [
-            "⭐️ PRO — 599₽ (̶4̶0̶0̶0̶)̶",
+            "⭐️ PRO — 500₽ (̶4̶0̶0̶0̶)̶",
             "🔥 Выбор большинства",
             "",
             "🔥100.000 токенов🔥",
@@ -131,7 +141,7 @@ def render_subscription_plan_detail_text(
         ]
     else:
         lines = [
-            "👑 Max — 1190₽ (̶9̶0̶0̶0̶)̶",
+            "👑 Max — 1000₽ (̶9̶0̶0̶0̶)̶",
             "",
             "🔥200.000 токенов🔥",
             "",

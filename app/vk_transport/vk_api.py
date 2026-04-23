@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 from secrets import randbelow
 from typing import Any
 
@@ -35,7 +36,8 @@ class VkMessagesApi:
         keyboard: dict[str, Any] | None = None,
         image_path: str | None = None,
     ) -> None:
-        chunks = _split_message_text(text)
+        sanitized_text = _sanitize_vk_outbound_text(text)
+        chunks = _split_message_text(sanitized_text)
         chunks = _add_chunk_markers(chunks)
         attachment = None
         if image_path is not None:
@@ -165,6 +167,22 @@ class VkMessagesApi:
 
 def _generate_random_id() -> int:
     return randbelow(2_147_483_647)
+
+
+def _sanitize_vk_outbound_text(text: str) -> str:
+    sanitized = text.replace("\r\n", "\n")
+    sanitized = re.sub(r"```[^\n]*\n?", "", sanitized)
+    sanitized = sanitized.replace("```", "")
+    sanitized = re.sub(r"`([^`]+)`", r"\1", sanitized)
+    sanitized = re.sub(r"\*\*(.*?)\*\*", r"\1", sanitized)
+    sanitized = re.sub(r"__(.*?)__", r"\1", sanitized)
+    sanitized = re.sub(r"(?m)^\s*[*+-]\s+", "• ", sanitized)
+    sanitized = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", sanitized)
+    sanitized = re.sub(r"\n{3,}", "\n\n", sanitized)
+    stripped = sanitized.strip()
+    if stripped:
+        return stripped
+    return text.strip()
 
 
 def _split_message_text(text: str) -> list[str]:

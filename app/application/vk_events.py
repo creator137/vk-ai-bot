@@ -8,11 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.access.repository import AccessGrantRepository
 from app.access.service import AccessDecision, AccessService
+from app.ai.provider_catalog import find_provider_option_by_button_text, get_provider_option
 from app.application.cabinet import CabinetService
 from app.application.payments import RobokassaPaymentInitHandler, build_robokassa_payment_init_handler
 from app.application.provider_selection import ProviderSelectionService
 from app.application.request_outcomes import RequestOutcome
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.payments.robokassa import RobokassaError
 from app.subscriptions.service import SubscriptionService
 from app.users.service import UserService
@@ -29,12 +30,14 @@ class VkEventApplicationHandler:
         provider_selection_service: ProviderSelectionService,
         cabinet_service: CabinetService,
         payment_init_handler: RobokassaPaymentInitHandler,
+        settings: Settings,
     ) -> None:
         self._user_service = user_service
         self._access_service = access_service
         self._provider_selection_service = provider_selection_service
         self._cabinet_service = cabinet_service
         self._payment_init_handler = payment_init_handler
+        self._settings = settings
 
     def handle(self, event: NormalizedVkEvent) -> RequestOutcome:
         if event.actor_id is None:
@@ -52,17 +55,39 @@ class VkEventApplicationHandler:
         button_action = _extract_button_action(event.payload)
 
         provider_selection = None
-        if button_action.get("type") == "provider_select":
-            provider_code = button_action.get("provider")
-            if isinstance(provider_code, str):
-                provider_selection = self._provider_selection_service.select_provider(
-                    user_id=user.id,
-                    provider_code=provider_code,
+        requested_provider_code = _resolve_requested_provider_code(
+            button_action=button_action,
+            message_text=message_text,
+        )
+        if requested_provider_code is not None:
+            if not _is_provider_available(
+                settings=self._settings,
+                provider_code=requested_provider_code,
+            ):
+                provider_title = get_provider_option(requested_provider_code).title
+                event.payload["handled_text"] = (
+                    f"⚠️ {provider_title} сейчас недоступен.\n"
+                    "Провайдер не настроен в runtime. Выберите другой ИИ."
                 )
-        else:
-            provider_selection = self._provider_selection_service.handle_message_text(
+                event.payload["handled_view"] = "cabinet"
+                outcome = RequestOutcome(
+                    status="handled",
+                    reason="provider_unavailable",
+                    user_id=user.id,
+                )
+                logger.info(
+                    "VK provider unavailable: type=%s event_id=%s user_id=%s vk_user_id=%s provider=%s",
+                    event.event_type,
+                    event.event_id,
+                    user.id,
+                    user.vk_user_id,
+                    requested_provider_code,
+                )
+                return outcome
+
+            provider_selection = self._provider_selection_service.select_provider(
                 user_id=user.id,
-                message_text=message_text,
+                provider_code=requested_provider_code,
             )
         if provider_selection is not None:
             event.payload["handled_text"] = (
@@ -231,7 +256,7 @@ def _map_access_decision_to_outcome(
 
     return RequestOutcome(
         status="denied",
-        reason="access_denied",
+        reason=decision.reason,
         user_id=user_id,
     )
 
@@ -247,6 +272,7 @@ def build_vk_event_application_handler(session: Session) -> VkEventApplicationHa
         user_service=user_service,
         access_repository=access_repository,
         subscription_service=subscription_service,
+        default_provider_code=settings.ai_provider,
     )
     access_service = AccessService(
         repository=access_repository,
@@ -258,6 +284,7 @@ def build_vk_event_application_handler(session: Session) -> VkEventApplicationHa
         provider_selection_service=provider_selection_service,
         cabinet_service=cabinet_service,
         payment_init_handler=payment_init_handler,
+        settings=settings,
     )
 
 
@@ -295,3 +322,36 @@ def _extract_button_action(payload: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     return decoded
+
+
+def _resolve_requested_provider_code(
+    *,
+    button_action: dict[str, Any],
+    message_text: str | None,
+) -> str | None:
+    if button_action.get("type") == "provider_select":
+        provider_code = button_action.get("provider")
+        if not isinstance(provider_code, str):
+            return None
+        try:
+            return get_provider_option(provider_code).code
+        except ValueError:
+            return None
+
+    if not message_text:
+        return None
+
+    option = find_provider_option_by_button_text(message_text)
+    if option is None:
+        return None
+    return option.code
+
+
+def _is_provider_available(*, settings: Settings, provider_code: str) -> bool:
+    if provider_code == "openai":
+        return bool(settings.openai_api_key)
+    if provider_code == "gemini":
+        return bool(settings.gemini_api_key)
+    if provider_code == "claude":
+        return bool(settings.claude_api_key)
+    return False

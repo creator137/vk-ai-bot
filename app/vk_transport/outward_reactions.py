@@ -13,6 +13,14 @@ from app.vk_transport.keyboards import (
 )
 
 ACCESS_NOT_ACTIVE_TEXT = render_subscription_plans_text()
+EXHAUSTED_BALANCE_TEXT = "\n".join(
+    [
+        "🔹 Баланс: 0 токенов",
+        "Токены закончились, поэтому ответ сейчас не может быть сгенерирован.",
+        "",
+        render_subscription_plans_text(),
+    ]
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,15 +34,19 @@ class VkOutwardReactionPlan:
 def plan_vk_outward_reaction(
     consumption: OutcomeConsumption,
     *,
+    outcome_reason: str | None = None,
     handled_text: str | None = None,
     handled_view: str | None = None,
     handled_payment_url: str | None = None,
     handled_image_path: str | None = None,
 ) -> VkOutwardReactionPlan:
     if consumption.state == "halted":
+        text = ACCESS_NOT_ACTIVE_TEXT
+        if outcome_reason == "subscription_exhausted":
+            text = EXHAUSTED_BALANCE_TEXT
         return VkOutwardReactionPlan(
             action="send_text",
-            text=ACCESS_NOT_ACTIVE_TEXT,
+            text=text,
             keyboard=build_plans_inline_keyboard(),
         )
 

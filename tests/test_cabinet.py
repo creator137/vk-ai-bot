@@ -59,7 +59,6 @@ class CabinetTests(unittest.TestCase):
 
         self.assertEqual(outcome.status, "handled")
         self.assertEqual(outcome.reason, "cabinet_shown")
-        self.assertIn("AI BOT", event.payload["handled_text"])
         self.assertIn("🟩 Ваш ID: 123456", event.payload["handled_text"])
         self.assertIn("💎 Подписка: Pro", event.payload["handled_text"])
         self.assertIn("🔹 Баланс: 98 766 токенов", event.payload["handled_text"])
@@ -67,7 +66,7 @@ class CabinetTests(unittest.TestCase):
         self.assertIn("🚀 Что умеет ИИ:", event.payload["handled_text"])
         self.assertIn("📦 Лимит тарифа: 100 000 токенов", event.payload["handled_text"])
 
-    def test_cabinet_shows_no_plan_when_subscription_missing(self) -> None:
+    def test_cabinet_shows_starter_bonus_for_new_user(self) -> None:
         event = NormalizedVkEvent(
             event_type="message_new",
             group_id=1,
@@ -88,7 +87,8 @@ class CabinetTests(unittest.TestCase):
         self.assertEqual(outcome.reason, "cabinet_shown")
         self.assertIn("🟩 Ваш ID: 123456", event.payload["handled_text"])
         self.assertIn("💎 Подписка: Free", event.payload["handled_text"])
-        self.assertIn("🔹 Баланс: 0 токенов", event.payload["handled_text"])
+        self.assertIn("🔹 Баланс: 5 000 токенов", event.payload["handled_text"])
+        self.assertIn("📦 Лимит тарифа: 5 000 токенов", event.payload["handled_text"])
 
     def test_return_to_cabinet_phrase_opens_cabinet(self) -> None:
         event = NormalizedVkEvent(
@@ -108,7 +108,7 @@ class CabinetTests(unittest.TestCase):
 
         self.assertEqual(outcome.status, "handled")
         self.assertEqual(outcome.reason, "cabinet_shown")
-        self.assertIn("AI BOT", event.payload["handled_text"])
+        self.assertIn("🟥 Ваш ID: 123456", event.payload["handled_text"])
 
     def test_cabinet_button_payload_opens_cabinet(self) -> None:
         event = NormalizedVkEvent(

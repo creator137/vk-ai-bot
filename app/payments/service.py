@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
@@ -40,6 +41,14 @@ class PaymentConfirmationResult:
     status: str
 
 
+@dataclass(frozen=True, slots=True)
+class PaymentCheckoutPage:
+    payment_id: int
+    payment_url: str
+    gateway_url: str
+    form_fields: dict[str, str]
+
+
 class SubscriptionPaymentService:
     def __init__(
         self,
@@ -48,6 +57,7 @@ class SubscriptionPaymentService:
         payment_repository: SubscriptionPaymentRepository | None = None,
         user_service: UserService | None = None,
         subscription_service: SubscriptionService | None = None,
+        notify_payment_activated: Callable[..., None] | None = None,
         robokassa: RobokassaSignatureBuilder | None = None,
         robokassa_fallbacks: list[RobokassaSignatureBuilder] | None = None,
         app_base_url: str | None = None,
@@ -56,6 +66,7 @@ class SubscriptionPaymentService:
         self._payment_repository = payment_repository or SubscriptionPaymentRepository(session)
         self._user_service = user_service or UserService(session=session)
         self._subscription_service = subscription_service or SubscriptionService(session=session)
+        self._notify_payment_activated = notify_payment_activated
         self._robokassa = robokassa
         self._robokassa_fallbacks = robokassa_fallbacks or []
         self._app_base_url = app_base_url.rstrip("/") if app_base_url else None
@@ -76,18 +87,7 @@ class SubscriptionPaymentService:
             plan_code=plan.code,
             amount_rub=plan.price_rub,
         )
-        link = self._robokassa.build_payment_link(
-            amount_rub=plan.price_rub,
-            invoice_id=payment.id,
-            description=f"Подписка {plan.title} для VK AI BOT",
-            shp_params={
-                "Shp_user": str(user.id),
-                "Shp_plan": plan.code,
-            },
-            result_url=self._build_callback_url("/payments/robokassa/result"),
-            success_url=self._build_callback_url("/payments/robokassa/success"),
-            fail_url=self._build_callback_url("/payments/robokassa/fail"),
-        )
+        link = self._build_payment_link_for_payment(payment)
         self._session.commit()
         self._session.refresh(payment)
         logger.info(
@@ -106,7 +106,24 @@ class SubscriptionPaymentService:
             payment=payment,
             vk_user_id=user.vk_user_id,
             payment_link=link,
+            hosted_payment_url=self._build_hosted_payment_url(payment.id) or link.payment_url,
             is_test=self._robokassa.test_mode,
+        )
+
+    def build_checkout_page(self, *, payment_id: int) -> PaymentCheckoutPage:
+        if self._robokassa is None:
+            raise RobokassaError("Robokassa is not configured")
+
+        payment = self._require_payment(payment_id)
+        if payment.status == "paid":
+            raise RobokassaError(f"Payment is already paid: {payment_id}")
+
+        link = self._build_payment_link_for_payment(payment)
+        return PaymentCheckoutPage(
+            payment_id=payment.id,
+            payment_url=link.payment_url,
+            gateway_url="https://auth.robokassa.ru/Merchant/Index.aspx",
+            form_fields=link.payload,
         )
 
     def confirm_result(
@@ -239,6 +256,30 @@ class SubscriptionPaymentService:
             return None
         return f"{self._app_base_url}{path}"
 
+    def _build_hosted_payment_url(self, payment_id: int) -> str | None:
+        return self._build_callback_url(f"/payments/robokassa/start/{payment_id}")
+
+    def _build_payment_link_for_payment(
+        self,
+        payment: SubscriptionPayment,
+    ) -> RobokassaPaymentLink:
+        if self._robokassa is None:
+            raise RobokassaError("Robokassa is not configured")
+
+        plan = get_subscription_plan(payment.plan_code)
+        return self._robokassa.build_payment_link(
+            amount_rub=payment.amount_rub,
+            invoice_id=payment.id,
+            description=f"Подписка {plan.title} для VK",
+            shp_params={
+                "Shp_user": str(payment.user_id),
+                "Shp_plan": plan.code,
+            },
+            result_url=self._build_callback_url("/payments/robokassa/result"),
+            success_url=self._build_callback_url("/payments/robokassa/success"),
+            fail_url=self._build_callback_url("/payments/robokassa/fail"),
+        )
+
     def _activate_paid_payment(self, payment: SubscriptionPayment) -> None:
         self._subscription_service.issue_for_user_id(
             user_id=payment.user_id,
@@ -248,6 +289,20 @@ class SubscriptionPaymentService:
         payment.paid_at = datetime.now(timezone.utc)
         self._session.commit()
         self._session.refresh(payment)
+        if self._notify_payment_activated is None:
+            return
+        try:
+            self._notify_payment_activated(
+                user_id=payment.user_id,
+                plan_code=payment.plan_code,
+            )
+        except Exception as error:
+            logger.warning(
+                "Payment activation notification failed: payment_id=%s user_id=%s error=%s",
+                payment.id,
+                payment.user_id,
+                str(error),
+            )
 
     def _find_matching_result_builder(
         self,
@@ -298,6 +353,7 @@ def _build_init_result(
     payment: SubscriptionPayment,
     vk_user_id: int,
     payment_link: RobokassaPaymentLink,
+    hosted_payment_url: str,
     is_test: bool,
 ) -> PaymentInitResult:
     return PaymentInitResult(
@@ -306,7 +362,7 @@ def _build_init_result(
         user_id=payment.user_id,
         plan_code=payment.plan_code,
         amount_rub=payment.amount_rub,
-        payment_url=payment_link.payment_url,
+        payment_url=hosted_payment_url,
         is_test=is_test,
     )
 

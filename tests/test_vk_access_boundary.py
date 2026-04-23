@@ -33,7 +33,7 @@ class VkAccessBoundaryTests(unittest.TestCase):
         Base.metadata.drop_all(self.engine)
         self.engine.dispose()
 
-    def test_vk_flow_returns_deny_when_user_has_no_grant(self) -> None:
+    def test_vk_flow_returns_accepted_for_new_user_with_starter_tokens(self) -> None:
         event = NormalizedVkEvent(
             event_type="message_new",
             group_id=1,
@@ -50,8 +50,8 @@ class VkAccessBoundaryTests(unittest.TestCase):
             outcome = handler.handle(event)
             users = session.execute(select(User)).scalars().all()
 
-        self.assertEqual(outcome.status, "denied")
-        self.assertEqual(outcome.reason, "access_denied")
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual(outcome.reason, "access_allowed")
         self.assertEqual(outcome.user_id, users[0].id)
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0].vk_user_id, 123456)

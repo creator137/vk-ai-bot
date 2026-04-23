@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ai.provider_catalog import get_provider_option
+from app.subscriptions.service import SubscriptionService
 from app.users.models import User
 from app.users.repository import UserRepository
 
@@ -19,19 +20,20 @@ class UserService:
 
     def find_or_create_by_vk_user_id(self, vk_user_id: int) -> User:
         user = self._repository.get_by_vk_user_id(vk_user_id)
-        if user is not None:
-            return user
+        if user is None:
+            try:
+                user = self._repository.create(vk_user_id)
+                self._session.commit()
+            except IntegrityError:
+                self._session.rollback()
+                user = self._repository.get_by_vk_user_id(vk_user_id)
+                if user is None:
+                    raise
 
-        try:
-            user = self._repository.create(vk_user_id)
-            self._session.commit()
-        except IntegrityError:
-            self._session.rollback()
-            user = self._repository.get_by_vk_user_id(vk_user_id)
-            if user is None:
-                raise
-        else:
+        if user.id is None:
             self._session.refresh(user)
+
+        SubscriptionService(session=self._session).issue_starter_for_user_id(user_id=user.id)
 
         return user
 

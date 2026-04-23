@@ -35,10 +35,12 @@ class CabinetService:
         user_service: UserService,
         access_repository: AccessGrantRepository,
         subscription_service: SubscriptionService,
+        default_provider_code: str = "openai",
     ) -> None:
         self._user_service = user_service
         self._access_repository = access_repository
         self._subscription_service = subscription_service
+        self._default_provider_code = default_provider_code
 
     def should_show_for_text(self, message_text: str | None) -> bool:
         if not message_text:
@@ -49,6 +51,7 @@ class CabinetService:
             "личный кабинет",
             "кабинет",
             "мой кабинет",
+            "меню",
             "profile",
             "вернуться в личный кабинет",
             "в кабинет",
@@ -169,7 +172,7 @@ class CabinetService:
 
         access_active = self._access_repository.has_grant_for_user_id(user_id)
         subscription = self._subscription_service.get_subscription(user_id=user_id)
-        provider_code = user.selected_provider or "openai"
+        provider_code = user.selected_provider or self._default_provider_code
         provider_title = get_provider_option(provider_code).title
 
         if subscription is None:
@@ -184,7 +187,21 @@ class CabinetService:
                 remaining_tokens=None,
             )
 
-        plan = get_subscription_plan(subscription.plan_code)
+        try:
+            plan = get_subscription_plan(subscription.plan_code)
+        except ValueError:
+            remaining_tokens = max(subscription.included_tokens - subscription.used_tokens, 0)
+            return CabinetSnapshot(
+                user_id=user.id,
+                vk_user_id=user.vk_user_id,
+                access_active=access_active or remaining_tokens > 0,
+                provider_title=provider_title,
+                plan_title=subscription.plan_code.title(),
+                included_tokens=subscription.included_tokens,
+                used_tokens=subscription.used_tokens,
+                remaining_tokens=remaining_tokens,
+            )
+
         remaining_tokens = max(subscription.included_tokens - subscription.used_tokens, 0)
         return CabinetSnapshot(
             user_id=user.id,

@@ -7,10 +7,15 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.payments.robokassa import RobokassaSignatureBuilder
 from app.payments.service import (
+    PaymentCheckoutPage,
     PaymentConfirmationResult,
     PaymentInitResult,
     SubscriptionPaymentService,
 )
+from app.subscriptions.catalog import get_subscription_plan
+from app.users.service import UserService
+from app.vk_transport.keyboards import build_dialog_menu_keyboard
+from app.vk_transport.vk_api import VkMessagesApi
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +44,9 @@ class RobokassaPaymentInitHandler:
             plan_code=plan_code,
         )
         return _build_init_result(result)
+
+    def build_checkout_page(self, *, payment_id: int) -> PaymentCheckoutPage:
+        return self._service.build_checkout_page(payment_id=payment_id)
 
 
 class RobokassaCallbackHandler:
@@ -149,6 +157,7 @@ def _build_subscription_payment_service(
 
     return SubscriptionPaymentService(
         session=session,
+        notify_payment_activated=_build_payment_activation_notifier(session=session, settings=settings),
         robokassa=robokassa,
         robokassa_fallbacks=robokassa_fallbacks,
         app_base_url=settings.app_base_url,
@@ -165,3 +174,36 @@ def _build_init_result(result: PaymentInitResult) -> RobokassaPaymentInitResult:
         payment_url=result.payment_url,
         is_test=result.is_test,
     )
+
+
+def _build_payment_activation_notifier(
+    *,
+    session: Session,
+    settings: Settings,
+):
+    if not settings.vk_outbound_token:
+        return None
+
+    messages_api = VkMessagesApi(
+        token=settings.vk_outbound_token,
+        api_version=settings.vk_api_version,
+    )
+    user_service = UserService(session=session)
+
+    def notify(*, user_id: int, plan_code: str) -> None:
+        user = user_service.get_by_id(user_id)
+        if user is None:
+            return
+        plan = get_subscription_plan(plan_code)
+        messages_api.send_text_message(
+            peer_id=user.vk_user_id,
+            text=(
+                "Оплата прошла успешно.\n"
+                f"Тариф {plan.title} активирован.\n"
+                f"Начислено: {plan.included_tokens:,} токенов.".replace(",", " ")
+            ),
+            keyboard=build_dialog_menu_keyboard(),
+            image_path=None,
+        )
+
+    return notify
