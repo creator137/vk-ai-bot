@@ -17,6 +17,30 @@ from app.vk_transport.vk_api import VkMessagesApi
 
 
 class VkMessagesApiTests(unittest.TestCase):
+    def test_set_typing_activity_calls_messages_set_activity(self) -> None:
+        captured: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            captured["body"] = request.content.decode()
+            return httpx.Response(200, json={"response": 1})
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        api = VkMessagesApi(
+            token="test-token",
+            api_version="5.199",
+            client=client,
+        )
+
+        api.set_typing_activity(peer_id=2000000001)
+
+        self.assertEqual(captured["url"], "https://api.vk.com/method/messages.setActivity")
+        body = parse_qs(captured["body"])
+        self.assertEqual(body["peer_id"], ["2000000001"])
+        self.assertEqual(body["type"], ["typing"])
+        self.assertEqual(body["access_token"], ["test-token"])
+        self.assertEqual(body["v"], ["5.199"])
+
     def test_send_text_message_calls_messages_send(self) -> None:
         captured: dict[str, str] = {}
 

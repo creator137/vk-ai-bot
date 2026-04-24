@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from html import escape
+import logging
 from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -17,6 +18,7 @@ from app.db.session import get_db_session
 from app.payments.robokassa import RobokassaError
 
 router = APIRouter(prefix="/payments/robokassa", tags=["robokassa"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/start/{payment_id}", response_class=HTMLResponse)
@@ -50,6 +52,21 @@ async def robokassa_result(
     out_sum = _require_string(payload, "OutSum")
     signature_value = _require_string(payload, "SignatureValue")
     shp_params = _extract_shp_params(payload)
+    client_host = request.client.host if request.client else None
+
+    logger.info(
+        (
+            "Robokassa result callback received: method=%s client_host=%s "
+            "invoice_id=%s out_sum=%s signature=%s shp_params=%s payload_keys=%s"
+        ),
+        request.method,
+        client_host,
+        invoice_id,
+        out_sum,
+        _mask_signature(signature_value),
+        shp_params,
+        sorted(payload.keys()),
+    )
 
     handler = build_robokassa_callback_handler(session, settings)
     try:
@@ -60,12 +77,30 @@ async def robokassa_result(
             shp_params=shp_params,
         )
     except RobokassaError as error:
+        logger.warning(
+            (
+                "Robokassa result callback rejected: client_host=%s invoice_id=%s "
+                "out_sum=%s signature=%s shp_params=%s error=%s"
+            ),
+            client_host,
+            invoice_id,
+            out_sum,
+            _mask_signature(signature_value),
+            shp_params,
+            str(error),
+        )
         status_code = (
             status.HTTP_503_SERVICE_UNAVAILABLE
             if "not configured" in str(error).casefold()
             else status.HTTP_400_BAD_REQUEST
         )
         raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+    logger.info(
+        "Robokassa result callback accepted: client_host=%s invoice_id=%s",
+        client_host,
+        invoice_id,
+    )
 
     return PlainTextResponse(f"OK{invoice_id}")
 
@@ -81,6 +116,21 @@ async def robokassa_success(
     out_sum = _require_string(payload, "OutSum")
     signature_value = _require_string(payload, "SignatureValue")
     shp_params = _extract_shp_params(payload)
+    client_host = request.client.host if request.client else None
+
+    logger.info(
+        (
+            "Robokassa success redirect received: method=%s client_host=%s "
+            "invoice_id=%s out_sum=%s signature=%s shp_params=%s payload_keys=%s"
+        ),
+        request.method,
+        client_host,
+        invoice_id,
+        out_sum,
+        _mask_signature(signature_value),
+        shp_params,
+        sorted(payload.keys()),
+    )
 
     handler = build_robokassa_callback_handler(session, settings)
     try:
@@ -91,12 +141,31 @@ async def robokassa_success(
             shp_params=shp_params,
         )
     except RobokassaError as error:
+        logger.warning(
+            (
+                "Robokassa success redirect rejected: client_host=%s invoice_id=%s "
+                "out_sum=%s signature=%s shp_params=%s error=%s"
+            ),
+            client_host,
+            invoice_id,
+            out_sum,
+            _mask_signature(signature_value),
+            shp_params,
+            str(error),
+        )
         status_code = (
             status.HTTP_503_SERVICE_UNAVAILABLE
             if "not configured" in str(error).casefold()
             else status.HTTP_400_BAD_REQUEST
         )
         raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+    logger.info(
+        "Robokassa success redirect accepted: client_host=%s invoice_id=%s status=%s",
+        client_host,
+        invoice_id,
+        result.status,
+    )
 
     payment_status = result.status
     if payment_status != "paid":
@@ -187,6 +256,12 @@ def _extract_shp_params(payload: dict[str, str]) -> dict[str, str]:
         for key, value in payload.items()
         if key.startswith("Shp_")
     }
+
+
+def _mask_signature(value: str) -> str:
+    if len(value) <= 8:
+        return value
+    return f"{value[:4]}...{value[-4:]}"
 
 
 def _build_vk_button_args(settings: Settings) -> dict[str, str]:

@@ -223,6 +223,48 @@ class RobokassaRoutesTests(unittest.TestCase):
         self.assertEqual(payment.status, "paid")
         self.assertEqual(subscription.plan_code, "lite")
 
+    def test_result_callback_logs_rejection_reason_for_invalid_signature(self) -> None:
+        with self.session_factory() as session:
+            user = User(vk_user_id=123456)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+
+            payment = SubscriptionPayment(
+                user_id=user.id,
+                plan_code="pro",
+                amount_rub=599,
+                status="pending",
+            )
+            session.add(payment)
+            session.commit()
+            session.refresh(payment)
+            payment_id = payment.id
+
+        with self.assertLogs("app.api.routes.robokassa", level="WARNING") as captured:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/payments/robokassa/result",
+                    data={
+                        "OutSum": "599.00",
+                        "InvId": str(payment_id),
+                        "SignatureValue": "bad-signature",
+                        "Shp_plan": "pro",
+                        "Shp_user": "1",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Invalid Robokassa result signature")
+        self.assertTrue(
+            any(
+                "Robokassa result callback rejected" in message
+                and "invoice_id=1" in message
+                and "error=Invalid Robokassa result signature" in message
+                for message in captured.output
+            )
+        )
+
     def _override_db_session(self) -> Generator[Session, None, None]:
         with self.session_factory() as session:
             yield session

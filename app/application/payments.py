@@ -161,6 +161,10 @@ def _build_subscription_payment_service(
         robokassa=robokassa,
         robokassa_fallbacks=robokassa_fallbacks,
         app_base_url=settings.app_base_url,
+        receipt_sno=settings.robokassa_receipt_sno,
+        receipt_tax=settings.robokassa_receipt_tax,
+        receipt_payment_method=settings.robokassa_receipt_payment_method,
+        receipt_payment_object=settings.robokassa_receipt_payment_object,
     )
 
 

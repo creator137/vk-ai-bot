@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import hashlib
-from urllib.parse import urlencode
+import json
+from urllib.parse import quote, urlencode
 
 
 class RobokassaError(RuntimeError):
@@ -45,15 +46,18 @@ class RobokassaSignatureBuilder:
         invoice_id: int,
         description: str,
         shp_params: dict[str, str],
+        receipt: dict[str, object] | None = None,
         result_url: str | None = None,
         success_url: str | None = None,
         fail_url: str | None = None,
     ) -> RobokassaPaymentLink:
         out_sum = format_amount_rub(amount_rub)
+        receipt_json = _serialize_receipt(receipt)
         signature = self._sign_for_payment(
             out_sum=out_sum,
             invoice_id=invoice_id,
             shp_params=shp_params,
+            receipt_json=receipt_json,
         )
         payload = {
             "MerchantLogin": self._merchant_login,
@@ -64,6 +68,8 @@ class RobokassaSignatureBuilder:
             "Encoding": "utf-8",
             "Culture": "ru",
         }
+        if receipt_json is not None:
+            payload["Receipt"] = receipt_json
         if self._test_mode:
             payload["IsTest"] = "1"
         if result_url:
@@ -122,8 +128,13 @@ class RobokassaSignatureBuilder:
         out_sum: str,
         invoice_id: int,
         shp_params: dict[str, str],
+        receipt_json: str | None = None,
     ) -> str:
-        base = f"{self._merchant_login}:{out_sum}:{invoice_id}:{self._password1}"
+        base_parts = [self._merchant_login, out_sum, str(invoice_id)]
+        if receipt_json is not None:
+            base_parts.append(quote(receipt_json, safe=""))
+        base_parts.append(self._password1)
+        base = ":".join(base_parts)
         return _sign_with_shp_tail(
             base=base,
             shp_params=shp_params,
@@ -192,6 +203,16 @@ def _sorted_shp_items(shp_params: dict[str, str]) -> list[tuple[str, str]]:
             if key.startswith("Shp_")
         ),
         key=lambda item: item[0],
+    )
+
+
+def _serialize_receipt(receipt: dict[str, object] | None) -> str | None:
+    if receipt is None:
+        return None
+    return json.dumps(
+        receipt,
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
 
 

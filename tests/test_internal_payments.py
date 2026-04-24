@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from html import unescape
+import json
 import unittest
 from collections.abc import Generator
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -36,6 +38,7 @@ class InternalPaymentsEndpointTests(unittest.TestCase):
             robokassa_merchant_login="demo",
             robokassa_password1="pass1",
             robokassa_password2="pass2",
+            robokassa_receipt_sno="usn_income",
             robokassa_test_mode=True,
         )
 
@@ -51,20 +54,47 @@ class InternalPaymentsEndpointTests(unittest.TestCase):
                 json={"vk_user_id": 123456, "plan_code": "pro"},
                 headers={"X-Internal-Token": "internal-secret"},
             )
+            self.assertEqual(response.status_code, 200)
+            body = response.json()
+            checkout_response = client.get(f"/payments/robokassa/start/{body['payment_id']}")
 
-        self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["vk_user_id"], 123456)
         self.assertEqual(body["plan_code"], "pro")
-        self.assertEqual(body["amount_rub"], 599)
+        self.assertEqual(body["amount_rub"], 500)
         self.assertTrue(body["is_test"])
 
         parsed = urlparse(body["payment_url"])
-        params = parse_qs(parsed.query)
-        self.assertEqual(params["MerchantLogin"], ["demo"])
-        self.assertEqual(params["OutSum"], ["599.00"])
-        self.assertEqual(params["Shp_plan"], ["pro"])
-        self.assertEqual(params["ResultUrl"], ["https://vegagpt.ru/payments/robokassa/result"])
+        self.assertEqual(parsed.path, "/payments/robokassa/start/1")
+
+        self.assertEqual(checkout_response.status_code, 200)
+        receipt_marker = 'name="Receipt" value="'
+        receipt_start = checkout_response.text.index(receipt_marker) + len(receipt_marker)
+        receipt_end = checkout_response.text.index('"', receipt_start)
+        receipt_value = unescape(checkout_response.text[receipt_start:receipt_end])
+        self.assertEqual(
+            json.loads(receipt_value),
+            {
+                "sno": "usn_income",
+                "items": [
+                    {
+                        "name": "Подписка Pro",
+                        "quantity": 1,
+                        "sum": 500,
+                        "payment_method": "full_prepayment",
+                        "payment_object": "service",
+                        "tax": "none",
+                    }
+                ],
+            },
+        )
+        self.assertIn('name="MerchantLogin" value="demo"', checkout_response.text)
+        self.assertIn('name="OutSum" value="500.00"', checkout_response.text)
+        self.assertIn('name="Shp_plan" value="pro"', checkout_response.text)
+        self.assertIn(
+            'name="ResultUrl" value="https://vegagpt.ru/payments/robokassa/result"',
+            checkout_response.text,
+        )
 
         with self.session_factory() as session:
             payments = session.execute(select(SubscriptionPayment)).scalars().all()

@@ -72,6 +72,26 @@ class VkMessagesApi:
             if "response" not in body:
                 raise VkApiError("VK API returned unexpected payload for messages.send")
 
+    def set_typing_activity(self, *, peer_id: int) -> None:
+        payload = {
+            "peer_id": peer_id,
+            "type": "typing",
+            "access_token": self._token,
+            "v": self._api_version,
+        }
+        response = self._post("https://api.vk.com/method/messages.setActivity", data=payload)
+        response.raise_for_status()
+        body = response.json()
+
+        if "error" in body:
+            error = body["error"]
+            code = error.get("error_code", "unknown")
+            message = error.get("error_msg", "unknown VK API error")
+            raise VkApiError(f"VK API error {code}: {message}")
+
+        if "response" not in body:
+            raise VkApiError("VK API returned unexpected payload for messages.setActivity")
+
     def _upload_message_photo(
         self,
         *,

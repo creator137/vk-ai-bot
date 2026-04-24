@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     robokassa_password2_test: str | None = None
     robokassa_test_mode: bool = False
     robokassa_hash_algorithm: str = "md5"
+    robokassa_receipt_sno: str | None = None
+    robokassa_receipt_tax: str = "none"
+    robokassa_receipt_payment_method: str = "full_prepayment"
+    robokassa_receipt_payment_object: str = "service"
 
     model_config = SettingsConfigDict(
         env_file=".env",

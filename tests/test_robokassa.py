@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from urllib.parse import parse_qs, urlparse
 
@@ -24,6 +25,19 @@ class RobokassaSignatureBuilderTests(unittest.TestCase):
                 "Shp_plan": "pro",
                 "Shp_user": "1",
             },
+            receipt={
+                "sno": "usn_income",
+                "items": [
+                    {
+                        "name": "Подписка Pro",
+                        "quantity": 1,
+                        "sum": 599,
+                        "payment_method": "full_prepayment",
+                        "payment_object": "service",
+                        "tax": "none",
+                    }
+                ],
+            },
             result_url="https://example.com/result",
             success_url="https://example.com/success",
             fail_url="https://example.com/fail",
@@ -44,6 +58,23 @@ class RobokassaSignatureBuilderTests(unittest.TestCase):
         self.assertEqual(params["Shp_plan"], ["pro"])
         self.assertEqual(params["Shp_user"], ["1"])
         self.assertEqual(params["SignatureValue"], [link.signature_value])
+        self.assertIn("Receipt", params)
+        self.assertEqual(
+            json.loads(params["Receipt"][0]),
+            {
+                "sno": "usn_income",
+                "items": [
+                    {
+                        "name": "Подписка Pro",
+                        "quantity": 1,
+                        "sum": 599,
+                        "payment_method": "full_prepayment",
+                        "payment_object": "service",
+                        "tax": "none",
+                    }
+                ],
+            },
+        )
 
     def test_verify_result_signature_accepts_normalized_amount(self) -> None:
         builder = RobokassaSignatureBuilder(

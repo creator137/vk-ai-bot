@@ -61,6 +61,10 @@ class SubscriptionPaymentService:
         robokassa: RobokassaSignatureBuilder | None = None,
         robokassa_fallbacks: list[RobokassaSignatureBuilder] | None = None,
         app_base_url: str | None = None,
+        receipt_sno: str | None = None,
+        receipt_tax: str = "none",
+        receipt_payment_method: str = "full_prepayment",
+        receipt_payment_object: str = "service",
     ) -> None:
         self._session = session
         self._payment_repository = payment_repository or SubscriptionPaymentRepository(session)
@@ -70,6 +74,10 @@ class SubscriptionPaymentService:
         self._robokassa = robokassa
         self._robokassa_fallbacks = robokassa_fallbacks or []
         self._app_base_url = app_base_url.rstrip("/") if app_base_url else None
+        self._receipt_sno = receipt_sno
+        self._receipt_tax = receipt_tax
+        self._receipt_payment_method = receipt_payment_method
+        self._receipt_payment_object = receipt_payment_object
 
     def create_for_vk_user_id(
         self,
@@ -275,10 +283,29 @@ class SubscriptionPaymentService:
                 "Shp_user": str(payment.user_id),
                 "Shp_plan": plan.code,
             },
+            receipt=self._build_receipt_for_payment(payment),
             result_url=self._build_callback_url("/payments/robokassa/result"),
             success_url=self._build_callback_url("/payments/robokassa/success"),
             fail_url=self._build_callback_url("/payments/robokassa/fail"),
         )
+
+    def _build_receipt_for_payment(self, payment: SubscriptionPayment) -> dict[str, object]:
+        plan = get_subscription_plan(payment.plan_code)
+        receipt: dict[str, object] = {
+            "items": [
+                {
+                    "name": f"Подписка {plan.title}",
+                    "quantity": 1,
+                    "sum": payment.amount_rub,
+                    "payment_method": self._receipt_payment_method,
+                    "payment_object": self._receipt_payment_object,
+                    "tax": self._receipt_tax,
+                }
+            ]
+        }
+        if self._receipt_sno:
+            receipt["sno"] = self._receipt_sno
+        return receipt
 
     def _activate_paid_payment(self, payment: SubscriptionPayment) -> None:
         self._subscription_service.issue_for_user_id(

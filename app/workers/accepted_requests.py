@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import threading
 from collections.abc import Callable
 
 import dramatiq
@@ -18,8 +19,8 @@ from app.ai.provider import (
     TextGenerationProvider,
     VisionGenerationProvider,
 )
-from app.ai.provider_catalog import get_provider_option
-from app.core.config import get_settings
+from app.ai.provider_catalog import PROVIDER_OPTIONS, get_provider_option
+from app.core.config import Settings, get_settings
 from app.db.session import get_session_factory
 from app.requests.service import AcceptedDialogueTurn, AcceptedRequestPersistenceService
 from app.subscriptions.service import SubscriptionService
@@ -32,6 +33,12 @@ from app.vk_transport.vk_api import VkApiError, VkMessagesApi
 
 logger = logging.getLogger(__name__)
 MAX_CONTEXT_TURNS = 6
+MAX_PROVIDER_TIMEOUT_RETRIES = 1
+TYPING_ACTIVITY_REFRESH_SECONDS = 4.0
+TIMEOUT_FALLBACK_TEXT = (
+    "⏳ Ответ от ИИ-сервиса задерживается.\n"
+    "Попробуйте отправить сообщение ещё раз через несколько секунд."
+)
 DEFAULT_IMAGE_PROMPT = (
     "Пользователь прислал изображение. Опиши, что на нем видно, "
     "и помоги по содержимому фото."
@@ -49,8 +56,12 @@ def process_vk_accepted_text_request(user_id: int, peer_id: int, text: str) -> N
         return
 
     provider_code = _resolve_provider_code_for_user(user_id=user_id, fallback=settings.ai_provider)
-    provider = _build_text_provider(settings, peer_id=peer_id, provider_code=provider_code)
-    if provider is None:
+    providers = _build_text_provider_candidates(
+        settings,
+        peer_id=peer_id,
+        preferred_provider_code=provider_code,
+    )
+    if not providers:
         return
 
     messages_api = VkMessagesApi(
@@ -62,9 +73,11 @@ def process_vk_accepted_text_request(user_id: int, peer_id: int, text: str) -> N
             user_id=user_id,
             peer_id=peer_id,
             text=text,
-            provider=provider,
+            provider=providers[0][1],
             messages_api=messages_api,
             persist_exchange=_persist_accepted_text_exchange,
+            provider_code=providers[0][0],
+            timeout_fallback_providers=providers[1:],
         )
     except (
         OpenAIProviderError,
@@ -97,12 +110,12 @@ def process_vk_accepted_photo_request(
         return
 
     provider_code = _resolve_provider_code_for_user(user_id=user_id, fallback=settings.ai_provider)
-    provider = _build_vision_provider(
+    providers = _build_vision_provider_candidates(
         settings,
         peer_id=peer_id,
-        provider_code=provider_code,
+        preferred_provider_code=provider_code,
     )
-    if provider is None:
+    if not providers:
         return
 
     messages_api = VkMessagesApi(
@@ -115,9 +128,11 @@ def process_vk_accepted_photo_request(
             peer_id=peer_id,
             text=text,
             image_urls=image_urls,
-            provider=provider,
+            provider=providers[0][1],
             messages_api=messages_api,
             persist_exchange=_persist_accepted_text_exchange,
+            provider_code=providers[0][0],
+            timeout_fallback_providers=providers[1:],
         )
     except (
         OpenAIProviderError,
@@ -142,6 +157,8 @@ def run_accepted_vk_text_request(
     provider: TextGenerationProvider,
     messages_api: VkMessagesApi,
     persist_exchange: Callable[..., None],
+    provider_code: str | None = None,
+    timeout_fallback_providers: list[tuple[str, TextGenerationProvider]] | None = None,
     consume_user_tokens: Callable[..., None] | None = None,
     load_dialogue_context: Callable[..., list[AcceptedDialogueTurn]] | None = None,
 ) -> None:
@@ -159,7 +176,17 @@ def run_accepted_vk_text_request(
         current_text=text,
         context_turns=context_turns,
     )
-    result = provider.generate_text(prompt)
+    with _typing_activity(messages_api=messages_api, peer_id=peer_id):
+        result = _generate_text_with_fallbacks(
+            primary_provider=(provider_code or "unknown", provider),
+            fallback_providers=timeout_fallback_providers or [],
+            prompt=prompt,
+            peer_id=peer_id,
+        )
+    if result is None:
+        _send_timeout_fallback(messages_api=messages_api, peer_id=peer_id)
+        return
+
     persist_exchange(
         user_id=user_id,
         peer_id=peer_id,
@@ -191,6 +218,8 @@ def run_accepted_vk_photo_request(
     provider: VisionGenerationProvider,
     messages_api: VkMessagesApi,
     persist_exchange: Callable[..., None],
+    provider_code: str | None = None,
+    timeout_fallback_providers: list[tuple[str, VisionGenerationProvider]] | None = None,
     consume_user_tokens: Callable[..., None] | None = None,
     load_dialogue_context: Callable[..., list[AcceptedDialogueTurn]] | None = None,
     prepare_images: Callable[..., list[ImageInput]] | None = None,
@@ -219,10 +248,19 @@ def run_accepted_vk_photo_request(
             "Сконцентрируйся на анализе фото и дай полезный ответ пользователю."
         )
 
-    result = provider.generate_text_from_images(
-        prompt=prompt,
-        images=prepare_images(provider=provider, image_urls=image_urls),
-    )
+    prepared_images = prepare_images(provider=provider, image_urls=image_urls)
+    with _typing_activity(messages_api=messages_api, peer_id=peer_id):
+        result = _generate_images_with_fallbacks(
+            primary_provider=(provider_code or "unknown", provider),
+            fallback_providers=timeout_fallback_providers or [],
+            prompt=prompt,
+            images=prepared_images,
+            peer_id=peer_id,
+        )
+    if result is None:
+        _send_timeout_fallback(messages_api=messages_api, peer_id=peer_id)
+        return
+
     persist_exchange(
         user_id=user_id,
         peer_id=peer_id,
@@ -292,6 +330,191 @@ def _build_text_provider(
     )
 
 
+def _build_text_provider_candidates(
+    settings: Settings,
+    *,
+    peer_id: int,
+    preferred_provider_code: str | None,
+) -> list[tuple[str, TextGenerationProvider]]:
+    candidates: list[tuple[str, TextGenerationProvider]] = []
+    for provider_code in _iter_provider_codes(preferred_provider_code):
+        provider = _build_text_provider(settings, peer_id=peer_id, provider_code=provider_code)
+        if provider is not None:
+            candidates.append((provider_code, provider))
+    return candidates
+
+
+def _generate_text_with_fallbacks(
+    *,
+    primary_provider: tuple[str, TextGenerationProvider],
+    fallback_providers: list[tuple[str, TextGenerationProvider]],
+    prompt: str,
+    peer_id: int,
+) -> TextGenerationResult | None:
+    providers = [primary_provider, *fallback_providers]
+    for index, (provider_code, provider) in enumerate(providers):
+        result = _generate_text_with_timeout_retry(
+            provider=provider,
+            prompt=prompt,
+            peer_id=peer_id,
+            provider_code=provider_code,
+        )
+        if result is not None:
+            return result
+        if index < len(providers) - 1:
+            next_provider_code = providers[index + 1][0]
+            logger.warning(
+                "Accepted VK text request switching provider after timeout: peer_id=%s from=%s to=%s",
+                peer_id,
+                provider_code,
+                next_provider_code,
+            )
+    return None
+
+
+def _generate_text_with_timeout_retry(
+    *,
+    provider: TextGenerationProvider,
+    prompt: str,
+    peer_id: int,
+    provider_code: str,
+) -> TextGenerationResult | None:
+    for attempt in range(MAX_PROVIDER_TIMEOUT_RETRIES + 1):
+        try:
+            return provider.generate_text(prompt)
+        except httpx.TimeoutException as error:
+            logger.warning(
+                (
+                    "Accepted VK text request timed out while calling AI provider: "
+                    "peer_id=%s provider=%s attempt=%s/%s error=%s"
+                ),
+                peer_id,
+                provider_code,
+                attempt + 1,
+                MAX_PROVIDER_TIMEOUT_RETRIES + 1,
+                str(error),
+            )
+            if attempt >= MAX_PROVIDER_TIMEOUT_RETRIES:
+                return None
+
+    return None
+
+
+def _generate_images_with_fallbacks(
+    *,
+    primary_provider: tuple[str, VisionGenerationProvider],
+    fallback_providers: list[tuple[str, VisionGenerationProvider]],
+    prompt: str,
+    images: list[ImageInput],
+    peer_id: int,
+) -> TextGenerationResult | None:
+    providers = [primary_provider, *fallback_providers]
+    for index, (provider_code, provider) in enumerate(providers):
+        result = _generate_images_with_timeout_retry(
+            provider=provider,
+            prompt=prompt,
+            images=images,
+            peer_id=peer_id,
+            provider_code=provider_code,
+        )
+        if result is not None:
+            return result
+        if index < len(providers) - 1:
+            next_provider_code = providers[index + 1][0]
+            logger.warning(
+                "Accepted VK photo request switching provider after timeout: peer_id=%s from=%s to=%s",
+                peer_id,
+                provider_code,
+                next_provider_code,
+            )
+    return None
+
+
+def _generate_images_with_timeout_retry(
+    *,
+    provider: VisionGenerationProvider,
+    prompt: str,
+    images: list[ImageInput],
+    peer_id: int,
+    provider_code: str,
+) -> TextGenerationResult | None:
+    for attempt in range(MAX_PROVIDER_TIMEOUT_RETRIES + 1):
+        try:
+            return provider.generate_text_from_images(prompt=prompt, images=images)
+        except httpx.TimeoutException as error:
+            logger.warning(
+                (
+                    "Accepted VK photo request timed out while calling AI provider: "
+                    "peer_id=%s provider=%s attempt=%s/%s error=%s"
+                ),
+                peer_id,
+                provider_code,
+                attempt + 1,
+                MAX_PROVIDER_TIMEOUT_RETRIES + 1,
+                str(error),
+            )
+            if attempt >= MAX_PROVIDER_TIMEOUT_RETRIES:
+                return None
+
+    return None
+
+
+def _send_timeout_fallback(*, messages_api: VkMessagesApi, peer_id: int) -> None:
+    messages_api.send_text_message(
+        peer_id=peer_id,
+        text=TIMEOUT_FALLBACK_TEXT,
+        keyboard=build_dialog_menu_keyboard(),
+        image_path=None,
+    )
+
+
+def _iter_provider_codes(preferred_provider_code: str | None) -> list[str]:
+    ordered_codes: list[str] = []
+    if preferred_provider_code:
+        ordered_codes.append(preferred_provider_code)
+
+    for option in PROVIDER_OPTIONS:
+        if option.code not in ordered_codes:
+            ordered_codes.append(option.code)
+
+    return ordered_codes
+
+
+class _TypingActivityHeartbeat:
+    def __init__(self, *, messages_api: VkMessagesApi, peer_id: int) -> None:
+        self._messages_api = messages_api
+        self._peer_id = peer_id
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def __enter__(self) -> "_TypingActivityHeartbeat":
+        self._send()
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._stop_event.set()
+        self._thread.join(timeout=TYPING_ACTIVITY_REFRESH_SECONDS)
+
+    def _run(self) -> None:
+        while not self._stop_event.wait(TYPING_ACTIVITY_REFRESH_SECONDS):
+            self._send()
+
+    def _send(self) -> None:
+        try:
+            self._messages_api.set_typing_activity(peer_id=self._peer_id)
+        except VkApiError as error:
+            logger.warning(
+                "Accepted VK typing activity failed: peer_id=%s error=%s",
+                self._peer_id,
+                str(error),
+            )
+
+
+def _typing_activity(*, messages_api: VkMessagesApi, peer_id: int) -> _TypingActivityHeartbeat:
+    return _TypingActivityHeartbeat(messages_api=messages_api, peer_id=peer_id)
+
+
 def _build_vision_provider(
     settings,
     *,
@@ -337,6 +560,20 @@ def _build_vision_provider(
         api_key=settings.openai_api_key,
         model=settings.openai_model,
     )
+
+
+def _build_vision_provider_candidates(
+    settings: Settings,
+    *,
+    peer_id: int,
+    preferred_provider_code: str | None,
+) -> list[tuple[str, VisionGenerationProvider]]:
+    candidates: list[tuple[str, VisionGenerationProvider]] = []
+    for provider_code in _iter_provider_codes(preferred_provider_code):
+        provider = _build_vision_provider(settings, peer_id=peer_id, provider_code=provider_code)
+        if provider is not None:
+            candidates.append((provider_code, provider))
+    return candidates
 
 
 def _resolve_provider_code_for_user(*, user_id: int, fallback: str) -> str:
