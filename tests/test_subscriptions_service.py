@@ -85,9 +85,10 @@ class SubscriptionServiceTests(unittest.TestCase):
 
         assert issued is not None
         assert subscription is not None
-        self.assertEqual(issued.included_tokens, 8_000)
-        self.assertEqual(subscription.included_tokens, 8_000)
-        self.assertEqual(subscription.used_tokens, 5_000)
+        self.assertEqual(issued.included_tokens, 3_000)
+        self.assertEqual(issued.used_tokens, 0)
+        self.assertEqual(subscription.included_tokens, 3_000)
+        self.assertEqual(subscription.used_tokens, 0)
 
     def test_daily_bonus_is_not_issued_when_tokens_remain(self) -> None:
         with self.session_factory() as session:
@@ -120,13 +121,13 @@ class SubscriptionServiceTests(unittest.TestCase):
                 user_id=user.id,
                 current_date=date(2026, 4, 23),
             )
-            subscription = service.get_subscription(user_id=user.id)
+            subscription = service._repository.get_by_user_id(user.id)  # noqa: SLF001
 
         self.assertIsNotNone(first_issue)
         self.assertIsNone(second_issue)
         assert subscription is not None
-        self.assertEqual(subscription.included_tokens, 8_000)
-        self.assertEqual(subscription.used_tokens, 8_000)
+        self.assertEqual(subscription.included_tokens, 3_000)
+        self.assertEqual(subscription.used_tokens, 3_000)
 
     def test_daily_bonus_can_be_issued_again_on_next_day(self) -> None:
         with self.session_factory() as session:
@@ -149,8 +150,29 @@ class SubscriptionServiceTests(unittest.TestCase):
         self.assertIsNotNone(next_issue)
         self.assertTrue(decision.allowed)
         assert subscription is not None
-        self.assertEqual(subscription.included_tokens, 11_000)
-        self.assertEqual(subscription.used_tokens, 8_000)
+        self.assertEqual(next_issue.included_tokens, 3_000)
+        self.assertEqual(next_issue.used_tokens, 0)
+        self.assertEqual(subscription.included_tokens, 3_000)
+        self.assertEqual(subscription.used_tokens, 0)
+
+    def test_daily_bonus_keeps_only_current_day_overspend_for_free_plan(self) -> None:
+        with self.session_factory() as session:
+            user = UserService(session).find_or_create_by_vk_user_id(123456)
+            service = SubscriptionService(session=session)
+            service.consume_tokens_if_present(user_id=user.id, total_tokens=5_400)
+
+            issued = service.issue_daily_exhausted_bonus_for_user_id(
+                user_id=user.id,
+                current_date=date(2026, 4, 23),
+            )
+            subscription = service.get_subscription(user_id=user.id)
+
+        assert issued is not None
+        assert subscription is not None
+        self.assertEqual(issued.included_tokens, 3_000)
+        self.assertEqual(issued.used_tokens, 400)
+        self.assertEqual(subscription.included_tokens, 3_000)
+        self.assertEqual(subscription.used_tokens, 400)
 
     def test_decision_becomes_denied_after_tokens_are_exhausted(self) -> None:
         with self.session_factory() as session:

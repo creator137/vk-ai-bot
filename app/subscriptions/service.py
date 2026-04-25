@@ -121,7 +121,13 @@ class SubscriptionService:
         if subscription.daily_tokens_last_issued_at == issue_date:
             return False
 
-        subscription.included_tokens += self.DAILY_EXHAUSTED_BONUS_TOKENS
+        if subscription.plan_code == "free":
+            overspent_tokens = max(subscription.used_tokens - subscription.included_tokens, 0)
+            subscription.included_tokens = self.DAILY_EXHAUSTED_BONUS_TOKENS
+            subscription.used_tokens = overspent_tokens
+        else:
+            subscription.included_tokens += self.DAILY_EXHAUSTED_BONUS_TOKENS
+
         subscription.daily_tokens_last_issued_at = issue_date
         self._session.commit()
         return True

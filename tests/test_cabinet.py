@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import unittest
 from unittest.mock import patch
 
@@ -89,6 +90,36 @@ class CabinetTests(unittest.TestCase):
         self.assertIn("💎 Подписка: Free", event.payload["handled_text"])
         self.assertIn("🔹 Баланс: 5 000 токенов", event.payload["handled_text"])
         self.assertIn("📦 Лимит тарифа: 5 000 токенов", event.payload["handled_text"])
+
+    def test_cabinet_shows_daily_free_balance_as_3000_after_exhaustion(self) -> None:
+        event = NormalizedVkEvent(
+            event_type="message_new",
+            group_id=1,
+            event_id="evt-cabinet-daily-free",
+            actor_id=123456,
+            peer_id=321,
+            occurred_at=1710000000,
+            payload={"message": {"text": "кабинет"}},
+        )
+
+        with self.session_factory() as session:
+            user_service = UserService(session)
+            user = user_service.find_or_create_by_vk_user_id(123456)
+            subscription_service = SubscriptionService(session=session)
+            subscription_service.consume_tokens_if_present(user_id=user.id, total_tokens=5_000)
+            subscription_service.issue_daily_exhausted_bonus_for_user_id(
+                user_id=user.id,
+                current_date=date(2026, 4, 23),
+            )
+
+            handler = build_vk_event_application_handler(session)
+            outcome = handler.handle(event)
+
+        self.assertEqual(outcome.status, "handled")
+        self.assertEqual(outcome.reason, "cabinet_shown")
+        self.assertIn("💎 Подписка: Free", event.payload["handled_text"])
+        self.assertIn("🔹 Баланс: 3 000 токенов", event.payload["handled_text"])
+        self.assertIn("📦 Лимит тарифа: 3 000 токенов", event.payload["handled_text"])
 
     def test_return_to_cabinet_phrase_opens_cabinet(self) -> None:
         event = NormalizedVkEvent(
