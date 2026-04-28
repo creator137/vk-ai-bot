@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from app.payments.robokassa import RobokassaSignatureBuilder
 
@@ -60,7 +60,7 @@ class RobokassaSignatureBuilderTests(unittest.TestCase):
         self.assertEqual(params["SignatureValue"], [link.signature_value])
         self.assertIn("Receipt", params)
         self.assertEqual(
-            json.loads(params["Receipt"][0]),
+            json.loads(unquote(params["Receipt"][0])),
             {
                 "sno": "usn_income",
                 "items": [

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from html import unescape
 import json
 import unittest
 from collections.abc import Generator
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -71,9 +70,9 @@ class InternalPaymentsEndpointTests(unittest.TestCase):
         receipt_marker = 'name="Receipt" value="'
         receipt_start = checkout_response.text.index(receipt_marker) + len(receipt_marker)
         receipt_end = checkout_response.text.index('"', receipt_start)
-        receipt_value = unescape(checkout_response.text[receipt_start:receipt_end])
+        receipt_value = checkout_response.text[receipt_start:receipt_end]
         self.assertEqual(
-            json.loads(receipt_value),
+            json.loads(unquote(receipt_value)),
             {
                 "sno": "usn_income",
                 "items": [

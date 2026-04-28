@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 
 
 class RobokassaError(RuntimeError):
@@ -52,12 +52,12 @@ class RobokassaSignatureBuilder:
         fail_url: str | None = None,
     ) -> RobokassaPaymentLink:
         out_sum = format_amount_rub(amount_rub)
-        receipt_json = _serialize_receipt(receipt)
+        receipt_value = _encode_receipt(receipt)
         signature = self._sign_for_payment(
             out_sum=out_sum,
             invoice_id=invoice_id,
             shp_params=shp_params,
-            receipt_json=receipt_json,
+            receipt_value=receipt_value,
         )
         payload = {
             "MerchantLogin": self._merchant_login,
@@ -68,8 +68,8 @@ class RobokassaSignatureBuilder:
             "Encoding": "utf-8",
             "Culture": "ru",
         }
-        if receipt_json is not None:
-            payload["Receipt"] = receipt_json
+        if receipt_value is not None:
+            payload["Receipt"] = receipt_value
         if self._test_mode:
             payload["IsTest"] = "1"
         if result_url:
@@ -85,7 +85,7 @@ class RobokassaSignatureBuilder:
         return RobokassaPaymentLink(
             payment_url=(
                 "https://auth.robokassa.ru/Merchant/Index.aspx?"
-                f"{urlencode(payload)}"
+                f"{_build_query_string(payload)}"
             ),
             signature_value=signature,
             out_sum=out_sum,
@@ -128,11 +128,11 @@ class RobokassaSignatureBuilder:
         out_sum: str,
         invoice_id: int,
         shp_params: dict[str, str],
-        receipt_json: str | None = None,
+        receipt_value: str | None = None,
     ) -> str:
         base_parts = [self._merchant_login, out_sum, str(invoice_id)]
-        if receipt_json is not None:
-            base_parts.append(quote(receipt_json, safe=""))
+        if receipt_value is not None:
+            base_parts.append(receipt_value)
         base_parts.append(self._password1)
         base = ":".join(base_parts)
         return _sign_with_shp_tail(
@@ -206,13 +206,21 @@ def _sorted_shp_items(shp_params: dict[str, str]) -> list[tuple[str, str]]:
     )
 
 
-def _serialize_receipt(receipt: dict[str, object] | None) -> str | None:
+def _encode_receipt(receipt: dict[str, object] | None) -> str | None:
     if receipt is None:
         return None
-    return json.dumps(
+    receipt_json = json.dumps(
         receipt,
         ensure_ascii=False,
         separators=(",", ":"),
+    )
+    return quote(receipt_json, safe="")
+
+
+def _build_query_string(payload: dict[str, str]) -> str:
+    return "&".join(
+        f"{quote(key, safe='')}={quote(value, safe='%')}"
+        for key, value in payload.items()
     )
 
 
