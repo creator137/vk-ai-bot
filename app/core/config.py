@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    app_name: str = "VK AI Platform"
+    app_env: str = "development"
+    log_level: str = "INFO"
+    database_url: str = "postgresql+psycopg://vk_ai:vk_ai@localhost:5432/vk_ai"
+    redis_url: str = "redis://localhost:6379/0"
+    ai_provider: str = "openai"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-5-mini"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    claude_api_key: str | None = None
+    claude_model: str = "claude-sonnet-4-20250514"
+    claude_max_tokens: int = 1024
+    app_base_url: str | None = None
+    vk_return_url: str | None = None
+    vk_community_url: str | None = None
+    internal_access_token: str | None = None
+    vk_outbound_token: str | None = None
+    vk_api_version: str = "5.199"
+    vk_callback_secret: str | None = None
+    vk_callback_confirmation_token: str | None = None
+    robokassa_merchant_login: str | None = None
+    robokassa_password1: str | None = None
+    robokassa_password2: str | None = None
+    robokassa_password1_test: str | None = None
+    robokassa_password2_test: str | None = None
+    robokassa_test_mode: bool = False
+    robokassa_hash_algorithm: str = "md5"
+    robokassa_receipt_sno: str | None = None
+    robokassa_receipt_tax: str = "none"
+    robokassa_receipt_payment_method: str = "full_prepayment"
+    robokassa_receipt_payment_object: str = "service"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
